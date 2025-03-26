@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -9,9 +9,8 @@ from PIL import Image
 from torchvision import transforms
 import os
 
-# Assuming these modules are part of your dyplom_mag library
-import net
-from function import adaptive_instance_normalization, coral
+import dyplom_mag.target_augment.net
+from dyplom_mag.target_augment.function import adaptive_instance_normalization, coral
 
 BASE_DIR = os.path.dirname(__file__)
 
