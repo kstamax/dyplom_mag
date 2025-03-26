@@ -11,6 +11,10 @@ setup(
     url="https://github.com/kstamax/dyplom_mag",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
+    package_data={
+        "dyplom_mag.target_augment.pre_trained": ["vgg16_ori.pth"],
+    },
+    include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
