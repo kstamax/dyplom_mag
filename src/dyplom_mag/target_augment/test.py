@@ -13,6 +13,8 @@ import os
 import net
 from function import adaptive_instance_normalization, coral
 
+BASE_DIR = os.path.dirname(__file__)
+
 
 @dataclass
 class StyleTransferConfig:
@@ -22,7 +24,7 @@ class StyleTransferConfig:
     content_dir: Optional[str] = None
     style: Optional[str] = None
     style_dir: Optional[str] = None
-    vgg: str = ''
+    vgg: str = os.path.join(BASE_DIR, "pre_trained/vgg16_ori.pth")
     decoder: str = ''
     fc1: str = ''
     fc2: str = ''
