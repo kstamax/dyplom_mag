@@ -1,4 +1,3 @@
-import argparse
 import os
 import torch
 import torch.backends.cudnn as cudnn
@@ -8,27 +7,51 @@ from PIL import Image, ImageFile
 from torchvision import transforms
 from tqdm import tqdm
 from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Optional
+
 import net
 from sampler import InfiniteSamplerWrapper
 import numpy as np
 import itertools
 import sys
 
-# Improved error handling and logging
-def add_error_handling():
-    def exception_hook(exctype, value, traceback):
-        print(f"Uncaught exception: {exctype.__name__}: {value}", file=sys.stderr)
-        sys.__excepthook__(exctype, value, traceback)
-    sys.excepthook = exception_hook
-
-# Only enable cudnn benchmark if CUDA is available
-if torch.cuda.is_available():
-    cudnn.benchmark = True
-Image.MAX_IMAGE_PIXELS = None  # Disable DecompressionBombError
-# Disable OSError: image file is truncated
+# Disable DecompressionBombError and truncated image warnings
+Image.MAX_IMAGE_PIXELS = None
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+@dataclass
+class TrainingConfig:
+    """Configuration class for style transfer training"""
+    # Directories
+    content_dir: str
+    style_dir: str = './dataset/style'
+    vgg_path: str = './pre_trained/vgg16_ori.pth'
+    save_dir: str = './models'
+
+    # Training hyperparameters
+    max_iter: int = 160000
+    batch_size: int = 8
+    n_threads: int = 0
+    save_model_interval: int = -1
+    lr_decay: float = 5e-5
+
+    # Learning rates
+    lr_decoder: float = 1e-4
+    lr_fcs: float = 1e-4
+
+    # Loss weights
+    style_weight: float = 50
+    content_weight: float = 1
+    content_style_weight: float = 1
+    constrain_weight: float = 1
+    before_fcs_steps: int = 0
+
+    # Device configuration
+    device: str = 'cuda'
+
 def train_transform():
+    """Create image transformation for training"""
     transform_list = [
         transforms.Resize(size=(600, 800)),
         transforms.RandomCrop(128),
@@ -73,15 +96,6 @@ class FlatFolderDataset(data.Dataset):
     def __len__(self):
         return len(self.paths)
 
-    def name(self):
-        return 'FlatFolderDataset'
-
-def adjust_learning_rate(init_lr, optimizer, iteration_count):
-    """Imitating the original implementation"""
-    lr = init_lr / (1.0 + args.lr_decay * iteration_count)
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
 def get_device(device_arg):
     """
     Parse device argument and return appropriate torch device
@@ -102,97 +116,84 @@ def get_device(device_arg):
     else:
         return torch.device(device_arg)
 
-def main():
-    # Add error handling
-    add_error_handling()
+def adjust_learning_rate(init_lr, optimizer, iteration_count):
+    """Adjust learning rate during training"""
+    lr = init_lr / (1.0 + iteration_count * 5e-5)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--content_dir', type=str, required=True,
-                        help='Directory path to a batch of content images')
-    parser.add_argument('--style_dir', type=str, default='./dataset/style',
-                        help='Directory path to a batch of style images')
+def train_style_transfer(config: TrainingConfig):
+    """
+    Main training pipeline for style transfer
+    
+    Args:
+        config (TrainingConfig): Configuration for training
+    """
+    # Enable cudnn benchmark if CUDA is available
+    if torch.cuda.is_available():
+        cudnn.benchmark = True
 
-    parser.add_argument('--vgg', type=str, default='./pre_trained/vgg16_ori.pth')
-
-    parser.add_argument('--save_dir', default='./models',
-                        help='Directory to save the model')
-    parser.add_argument('--n_threads', type=int, default=0)  # Change to 0 for debugging
-    parser.add_argument('--save_model_interval', type=int, default=-1)
-    parser.add_argument('--lr_decay', type=float, default=5e-5)
-    parser.add_argument('--max_iter', type=int, default=160000)
-    parser.add_argument('--batch_size', type=int, default=8)
-
-    parser.add_argument('--lr_decoder', type=float, default=1e-4)
-    parser.add_argument('--lr_fcs', type=float, default=1e-4)
-    parser.add_argument('--style_weight', type=float, default=50)
-    parser.add_argument('--content_weight', type=float, default=1)
-    parser.add_argument('--content_style_weight', type=float, default=1)
-    parser.add_argument('--constrain_weight', type=float, default=1)
-    parser.add_argument('--before_fcs_steps', type=int, default=0)
-    parser.add_argument('--device', type=str, default='cuda',
-                        help='Device to use for training: cuda, cpu, or mps')
-    parser.add_argument('--adjust_workers', action='store_true',
-                        help='Automatically adjust number of workers based on device')
-    global args
-    args = parser.parse_args()
-
-    # Get device
-    if args.device.startswith('cuda:'):
-        device_idx = args.device.split(':')[1]
+    # Determine device
+    if config.device.startswith('cuda:'):
+        device_idx = config.device.split(':')[1]
         os.environ["CUDA_VISIBLE_DEVICES"] = device_idx
         device = get_device('cuda')
     else:
-        device = get_device(args.device)
+        device = get_device(config.device)
 
     print(f"Using device: {device}")
 
-    # Adjust number of workers based on device if requested
-    if args.adjust_workers:
-        if device.type == 'cpu':
-            import multiprocessing
-            args.n_threads = min(args.n_threads, multiprocessing.cpu_count())
-        elif device.type == 'mps':
-            # MPS often works better with fewer threads
-            args.n_threads = min(args.n_threads, 4)
+    # Adjust number of workers based on device
+    if device.type == 'cpu':
+        import multiprocessing
+        config.n_threads = min(config.n_threads, multiprocessing.cpu_count())
+    elif device.type == 'mps':
+        # MPS often works better with fewer threads
+        config.n_threads = min(config.n_threads, 4)
 
-    if not os.path.exists(args.save_dir):
-        os.makedirs(args.save_dir)
+    # Create save directory if it doesn't exist
+    if not os.path.exists(config.save_dir):
+        os.makedirs(config.save_dir)
 
+    # Initialize network components
     decoder = net.decoder
     vgg = net.vgg
     fc1 = net.fc1
     fc2 = net.fc2
 
-    # Load model with appropriate map_location
-    vgg.load_state_dict(torch.load(args.vgg, map_location=device)['model'])
+    # Load VGG with appropriate map_location
+    vgg.load_state_dict(torch.load(config.vgg_path, map_location=device)['model'])
     vgg = nn.Sequential(*list(vgg.children())[:19])
 
+    # Create network
     network = net.Net(vgg, decoder, fc1, fc2)
     network.train()
     network.to(device)
 
+    # Create data transformations
     content_tf = train_transform()
     style_tf = train_transform()
 
-    content_dataset = FlatFolderDataset(args.content_dir, content_tf)
-    style_dataset = FlatFolderDataset(args.style_dir, style_tf)
+    # Create datasets
+    content_dataset = FlatFolderDataset(config.content_dir, content_tf)
+    style_dataset = FlatFolderDataset(config.style_dir, style_tf)
 
-    # Adjust data loading for MPS and CPU
+    # Create data loaders
     content_loader = data.DataLoader(
         content_dataset, 
-        batch_size=args.batch_size,
+        batch_size=config.batch_size,
         sampler=InfiniteSamplerWrapper(content_dataset),
-        num_workers=args.n_threads,
+        num_workers=config.n_threads,
         pin_memory=device.type == 'cuda',
-        persistent_workers=args.n_threads > 0
+        persistent_workers=config.n_threads > 0
     )
     style_loader = data.DataLoader(
         style_dataset, 
-        batch_size=args.batch_size,
+        batch_size=config.batch_size,
         sampler=InfiniteSamplerWrapper(style_dataset),
-        num_workers=args.n_threads,
+        num_workers=config.n_threads,
         pin_memory=device.type == 'cuda',
-        persistent_workers=args.n_threads > 0
+        persistent_workers=config.n_threads > 0
     )
 
     # Create iterators with error handling
@@ -203,21 +204,23 @@ def main():
         print(f"Error creating data iterators: {e}")
         raise
 
+    # Create optimizers
     optimizer1 = torch.optim.Adam(
         itertools.chain(*[network.dec_1.parameters(), network.dec_2.parameters(), 
                          network.dec_3.parameters(), network.dec_4.parameters()]), 
-        lr=args.lr_decoder)
+        lr=config.lr_decoder)
     optimizer2 = torch.optim.Adam(
         itertools.chain(*[network.fc1.parameters(), network.fc2.parameters()]), 
-        lr=args.lr_fcs)
+        lr=config.lr_fcs)
 
-    # Main training loop with more robust error handling
+    # Main training loop with robust error handling
     try:
-        for i in tqdm(range(args.max_iter)):
+        for i in tqdm(range(config.max_iter)):
             try:
-                adjust_learning_rate(args.lr_decoder, optimizer1, iteration_count=i)
+                # Adjust decoder learning rate
+                adjust_learning_rate(config.lr_decoder, optimizer1, iteration_count=i)
 
-                # Use a try-except block for data loading
+                # Load data
                 try:
                     content_images = next(content_iter).to(device)
                     style_images = next(style_iter).to(device)
@@ -228,9 +231,10 @@ def main():
                     content_images = next(content_iter).to(device)
                     style_images = next(style_iter).to(device)
 
+                # First stage of training
                 loss_c, loss_const = network(content_images, style_images, flag=0)
-                loss_c = args.content_weight * loss_c
-                loss_const = args.constrain_weight * loss_const
+                loss_c = config.content_weight * loss_c
+                loss_const = config.constrain_weight * loss_const
                 loss = loss_c + loss_const
 
                 optimizer1.zero_grad()
@@ -238,11 +242,12 @@ def main():
                 loss.backward()
                 optimizer1.step()
 
-                if i >= args.before_fcs_steps:
-                    adjust_learning_rate(args.lr_fcs, optimizer2, iteration_count=i-args.before_fcs_steps)
+                # Second stage of training
+                if i >= config.before_fcs_steps:
+                    adjust_learning_rate(config.lr_fcs, optimizer2, iteration_count=i-config.before_fcs_steps)
                     loss_s_1, loss_s_2 = network(content_images, style_images, flag=1)
-                    loss_s_1 = args.style_weight * loss_s_1
-                    loss_s_2 = args.content_style_weight * loss_s_2
+                    loss_s_1 = config.style_weight * loss_s_1
+                    loss_s_2 = config.content_style_weight * loss_s_2
                     loss = loss_s_1 + loss_s_2
 
                     optimizer1.zero_grad()
@@ -252,11 +257,11 @@ def main():
 
                 # Save model checkpoints
                 save = False
-                if args.save_model_interval != -1:
-                    if (i + 1) % args.save_model_interval == 0 or (i + 1) == args.max_iter:
+                if config.save_model_interval != -1:
+                    if (i + 1) % config.save_model_interval == 0 or (i + 1) == config.max_iter:
                         save = True
                 else:
-                    if (i + 1) == args.max_iter:
+                    if (i + 1) == config.max_iter:
                         save = True
                         
                 if save:
@@ -264,40 +269,29 @@ def main():
                     state_dict = net.decoder.state_dict()
                     for key in state_dict.keys():
                         state_dict[key] = state_dict[key].to(torch.device('cpu'))
-                    torch.save(state_dict, os.path.join(args.save_dir, f'decoder_iter_{i + 1}.pth'))
+                    torch.save(state_dict, os.path.join(config.save_dir, f'decoder_iter_{i + 1}.pth'))
                     
                     state_dict = net.fc1.state_dict()
                     for key in state_dict.keys():
                         state_dict[key] = state_dict[key].to(torch.device('cpu'))
-                    torch.save(state_dict, os.path.join(args.save_dir, f'fc1_iter_{i + 1}.pth'))
+                    torch.save(state_dict, os.path.join(config.save_dir, f'fc1_iter_{i + 1}.pth'))
                     
                     state_dict = net.fc2.state_dict()
                     for key in state_dict.keys():
                         state_dict[key] = state_dict[key].to(torch.device('cpu'))
-                    torch.save(state_dict, os.path.join(args.save_dir, f'fc2_iter_{i + 1}.pth'))
+                    torch.save(state_dict, os.path.join(config.save_dir, f'fc2_iter_{i + 1}.pth'))
                     
             except Exception as iter_error:
                 print(f"Error in training iteration {i}: {iter_error}")
-                # Optional: break or continue based on the type of error
                 
     except KeyboardInterrupt:
         print("Training interrupted. Saving current model state...")
         # Save the current state on keyboard interrupt
-        state_dict = net.decoder.state_dict()
-        for key in state_dict.keys():
-            state_dict[key] = state_dict[key].to(torch.device('cpu'))
-        torch.save(state_dict, os.path.join(args.save_dir, 'decoder_interrupted.pth'))
-        
-        state_dict = net.fc1.state_dict()
-        for key in state_dict.keys():
-            state_dict[key] = state_dict[key].to(torch.device('cpu'))
-        torch.save(state_dict, os.path.join(args.save_dir, 'fc1_interrupted.pth'))
-        
-        state_dict = net.fc2.state_dict()
-        for key in state_dict.keys():
-            state_dict[key] = state_dict[key].to(torch.device('cpu'))
-        torch.save(state_dict, os.path.join(args.save_dir, 'fc2_interrupted.pth'))
+        for model_name, model in [('decoder', net.decoder), 
+                                  ('fc1', net.fc1), 
+                                  ('fc2', net.fc2)]:
+            state_dict = model.state_dict()
+            for key in state_dict.keys():
+                state_dict[key] = state_dict[key].to(torch.device('cpu'))
+            torch.save(state_dict, os.path.join(config.save_dir, f'{model_name}_interrupted.pth'))
         print("Interrupted model saved.")
-
-if __name__ == '__main__':
-    main()
