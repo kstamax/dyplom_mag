@@ -10,11 +10,10 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
 
-import net
-from sampler import InfiniteSamplerWrapper
+import dyplom_mag.target_augment.net as net
+from dyplom_mag.target_augment.sampler import InfiniteSamplerWrapper
 import numpy as np
 import itertools
-import sys
 
 # Disable DecompressionBombError and truncated image warnings
 Image.MAX_IMAGE_PIXELS = None

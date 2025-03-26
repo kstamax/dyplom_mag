@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from enhance_vgg16 import enhance_vgg16
+from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
 
 def get_style_images(im_data, args, adain=None):
     if adain==None:

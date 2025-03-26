@@ -2,7 +2,7 @@
 from torchvision import models
 import torch.nn as nn
 import torch
-from enhance_base import enhance_base
+from dyplom_mag.target_augment.enhance_base import enhance_base
 
 class enhance_vgg16(enhance_base):
     def __init__(self, args):
