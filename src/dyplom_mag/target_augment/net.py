@@ -1,7 +1,7 @@
 import torch.nn as nn
 
-from function import adaptive_instance_normalization as adain
-from function import calc_mean_std
+from dyplom_mag.target_augment.function import adaptive_instance_normalization as adain
+from dyplom_mag.target_augment.function import calc_mean_std
 
 decoder = nn.Sequential(
 
