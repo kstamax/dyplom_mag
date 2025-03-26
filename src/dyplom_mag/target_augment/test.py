@@ -213,7 +213,7 @@ def process_style_transfer(config: StyleTransferConfig):
                 output = output.cpu()
                 output_name = os.path.join(
                     config.output, 
-                    f'{content_path.stem}_stylized_{style_path.stem}{config.save_ext}'
+                    f'{content_path.stem}{config.save_ext}'
                 )
                 save_output_image(output, output_name, pixel_means)
 
