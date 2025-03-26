@@ -9,7 +9,7 @@ from PIL import Image
 from torchvision import transforms
 import os
 
-import dyplom_mag.target_augment.net
+import dyplom_mag.target_augment.net as net
 from dyplom_mag.target_augment.function import adaptive_instance_normalization, coral
 
 BASE_DIR = os.path.dirname(__file__)
