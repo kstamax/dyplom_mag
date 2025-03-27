@@ -386,7 +386,7 @@ class SFYOLOTrainer:
 
         # First build the dataset
         dataset = build_yolo_dataset(
-            cfg=self.student_model.model.args,  # Use model args as config
+            cfg=self.student_model.args,  # Use model args as config
             img_path=train_path,
             batch=self.batch_size,
             data=data_dict,
