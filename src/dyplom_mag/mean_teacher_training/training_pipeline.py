@@ -103,7 +103,7 @@ def iterative_teacher_student_training(
         print("Training student on pseudo-labeled dataset...")
         current_lr = base_lr * 0.5 * (1 + math.cos(math.pi * epoch / total_epochs))
         student_model.train(
-            data=pseudo_dataset_dir,
+            data=os.path.join(pseudo_dataset_dir, "data.yaml"),
             epochs=epochs,
             imgsz=imgsz,
             device=device,
