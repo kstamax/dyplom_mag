@@ -166,11 +166,23 @@ class SFYOLOTrainer:
             except ImportError:
                 self.data_path = self.data_path.resolve()
         
-        # Update paths in data_dict to be absolute
-        for k in ['train', 'val', 'test']:
+        # Set the path in the data_dict
+        self.data_dict["path"] = str(self.data_path)
+        
+        # Update paths in data_dict to be absolute, with special handling for "../" paths
+        for k in ['train', 'val', 'test', 'minival']:
             if k in self.data_dict and self.data_dict[k]:
-                if isinstance(self.data_dict[k], str) and not os.path.isabs(self.data_dict[k]):
-                    self.data_dict[k] = str(self.data_path / self.data_dict[k])
+                if isinstance(self.data_dict[k], str):
+                    x = (self.data_path / self.data_dict[k]).resolve()
+                    # Special handling for paths starting with "../"
+                    if not x.exists() and self.data_dict[k].startswith("../"):
+                        x = (self.data_path / self.data_dict[k][3:]).resolve()
+                    self.data_dict[k] = str(x)
+                else:
+                    # Handle list of paths
+                    self.data_dict[k] = [str((self.data_path / x).resolve()) for x in self.data_dict[k]]
+                    
+        print(f"Resolved data paths: {self.data_dict}")
         
         # Initialize style transfer model
         self.style_transfer = None
