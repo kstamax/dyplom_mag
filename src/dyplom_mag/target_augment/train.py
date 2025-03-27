@@ -294,7 +294,7 @@ def train_style_transfer(config: TrainingConfig):
                         state_dict[key] = state_dict[key].to(torch.device("cpu"))
                     torch.save(
                         state_dict,
-                        os.path.join(config.save_dir, f"decoder_iter_{i + 1}.pth"),
+                        os.path.join(config.save_dir, "decoder.pth"),
                     )
 
                     state_dict = net.fc1.state_dict()
@@ -302,7 +302,7 @@ def train_style_transfer(config: TrainingConfig):
                         state_dict[key] = state_dict[key].to(torch.device("cpu"))
                     torch.save(
                         state_dict,
-                        os.path.join(config.save_dir, f"fc1_iter_{i + 1}.pth"),
+                        os.path.join(config.save_dir, "fc1.pth"),
                     )
 
                     state_dict = net.fc2.state_dict()
@@ -310,7 +310,7 @@ def train_style_transfer(config: TrainingConfig):
                         state_dict[key] = state_dict[key].to(torch.device("cpu"))
                     torch.save(
                         state_dict,
-                        os.path.join(config.save_dir, f"fc2_iter_{i + 1}.pth"),
+                        os.path.join(config.save_dir, "fc2.pth"),
                     )
 
             except Exception as iter_error:
