@@ -152,6 +152,26 @@ class SFYOLOTrainer:
         if not os.path.exists(self.data_yaml):
             raise FileNotFoundError(f"Could not find data.yaml in {data_dir}")
         
+        # Load data.yaml
+        with open(self.data_yaml, errors='ignore') as f:
+            self.data_dict = yaml.safe_load(f)
+        
+        # Resolve paths - integrate the path resolution code
+        self.data_path = Path(data_dir or self.data_dict.get("path") or Path(self.data_yaml).parent)
+        if not self.data_path.is_absolute():
+            # If DATASETS_DIR is defined in your module, use it; otherwise use an absolute path
+            try:
+                from ultralytics.utils.ops import DATASETS_DIR
+                self.data_path = (DATASETS_DIR / self.data_path).resolve()
+            except ImportError:
+                self.data_path = self.data_path.resolve()
+        
+        # Update paths in data_dict to be absolute
+        for k in ['train', 'val', 'test']:
+            if k in self.data_dict and self.data_dict[k]:
+                if isinstance(self.data_dict[k], str) and not os.path.isabs(self.data_dict[k]):
+                    self.data_dict[k] = str(self.data_path / self.data_dict[k])
+        
         # Initialize style transfer model
         self.style_transfer = None
         
@@ -380,12 +400,8 @@ class SFYOLOTrainer:
         from ultralytics.utils import colorstr
         from types import SimpleNamespace
         
-        # Load the data.yaml configuration
-        with open(self.data_yaml, errors='ignore') as f:
-            data_dict = yaml.safe_load(f)
-        
-        # Get the training data path
-        train_path = data_dict['train']
+        # Get the training data path from resolved data_dict
+        train_path = self.data_dict['train']
         
         # Create a dataset
         # First, create a config with attributes similar to what the DetectionTrainer would use
@@ -401,7 +417,7 @@ class SFYOLOTrainer:
             hyp={}  # Add any hyperparameters needed
         )
         
-        # Create the dataset directly
+        # Create the dataset directly with the resolved path
         dataset = YOLODataset(
             img_path=train_path,
             imgsz=self.img_size,
@@ -416,7 +432,7 @@ class SFYOLOTrainer:
             prefix=colorstr('train: '),
             task='detect',
             classes=None,
-            data=data_dict
+            data=self.data_dict  # Use the updated data_dict with absolute paths
         )
         
         # Use the build_dataloader function with the dataset
@@ -495,19 +511,15 @@ class SFYOLOTrainer:
         # Set teacher model to evaluation mode
         self.teacher_model.model.eval()
         
-        # Load the data.yaml configuration
-        with open(self.data_yaml, errors='ignore') as f:
-            data_dict = yaml.safe_load(f)
-        
-        # Get validation data path
-        val_path = data_dict.get('val', '')
+        # Get validation data path from resolved data_dict
+        val_path = self.data_dict.get('val', '')
         if not val_path:
             print("Warning: No validation path found, using training path")
-            val_path = data_dict.get('train', '')
+            val_path = self.data_dict.get('train', '')
         
-        # Run validation using Ultralytics built-in method
+        # Run validation using Ultralytics built-in method with updated data_dict
         results = self.teacher_model.val(
-            data=self.data_yaml,
+            data=self.data_dict,  # Use the entire data_dict with absolute paths
             batch=self.batch_size,
             imgsz=self.img_size,
             verbose=False
