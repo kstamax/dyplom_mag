@@ -124,7 +124,7 @@ class SFYOLOTrainer:
         if fc1_path:
             self.fc1_path = fc1_path
         else:
-            os.path.join(BASE_DIR, "..", "target_augment", "models", "fc1.pth")
+            self.fc1_path = os.path.join(BASE_DIR, "..", "target_augment", "models", "fc1.pth")
         if fc2_path:
             self.fc2_path = fc2_path
         else:
