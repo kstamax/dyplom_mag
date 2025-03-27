@@ -375,27 +375,51 @@ class SFYOLOTrainer:
     
     def _create_dataloader(self):
         """Create a dataloader from the Ultralytics dataset"""
-        from ultralytics.data.build import build_dataloader, build_yolo_dataset
+        from ultralytics.data.build import build_dataloader
+        from ultralytics.data.dataset import YOLODataset
+        from ultralytics.utils import colorstr
+        from types import SimpleNamespace
         
         # Load the data.yaml configuration
         with open(self.data_yaml, errors='ignore') as f:
             data_dict = yaml.safe_load(f)
-
+        
         # Get the training data path
         train_path = data_dict['train']
-
-        # First build the dataset
-        dataset = build_yolo_dataset(
-            cfg=self.student_model.args,  # Use model args as config
-            img_path=train_path,
-            batch=self.batch_size,
-            data=data_dict,
-            mode="train",
+        
+        # Create a dataset
+        # First, create a config with attributes similar to what the DetectionTrainer would use
+        args = SimpleNamespace(
+            imgsz=self.img_size,
             rect=False,
-            stride=32,
+            cache=None,
+            single_cls=False,
+            augment=True,
+            task='detect',
+            classes=None,
+            fraction=1.0,
+            hyp={}  # Add any hyperparameters needed
         )
-
-        # Then build the dataloader from the dataset
+        
+        # Create the dataset directly
+        dataset = YOLODataset(
+            img_path=train_path,
+            imgsz=self.img_size,
+            batch_size=self.batch_size,
+            augment=True,  # augmentation for training
+            hyp=args,
+            rect=False,
+            cache=None,
+            single_cls=False,
+            stride=32,
+            pad=0.0,
+            prefix=colorstr('train: '),
+            task='detect',
+            classes=None,
+            data=data_dict
+        )
+        
+        # Use the build_dataloader function with the dataset
         loader = build_dataloader(
             dataset=dataset,
             batch=self.batch_size,
@@ -405,7 +429,7 @@ class SFYOLOTrainer:
         )
         
         return loader
-    
+
     def _get_compute_loss(self):
         """Get the loss computation function for YOLO"""
         try:
