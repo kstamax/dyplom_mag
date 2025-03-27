@@ -375,31 +375,34 @@ class SFYOLOTrainer:
     
     def _create_dataloader(self):
         """Create a dataloader from the Ultralytics dataset"""
-        from ultralytics.data.build import build_dataloader
+        from ultralytics.data.build import build_dataloader, build_yolo_dataset
         
         # Load the data.yaml configuration
         with open(self.data_yaml, errors='ignore') as f:
             data_dict = yaml.safe_load(f)
-        
+
         # Get the training data path
         train_path = data_dict['train']
-        
-        # Build the dataloader
-        loader = build_dataloader(
-            path=train_path,
-            imgsz=self.img_size,
-            batch_size=self.batch_size,
-            stride=32,  # Assuming YOLO with stride 32
-            hyp=None,  # No hyperparameters for now
-            augment=True,
-            cache=False,
-            pad=0.0,
+
+        # First build the dataset
+        dataset = build_yolo_dataset(
+            cfg=self.student_model.model.args,  # Use model args as config
+            img_path=train_path,
+            batch=self.batch_size,
+            data=data_dict,
+            mode="train",
             rect=False,
-            rank=-1,
+            stride=32,
+        )
+
+        # Then build the dataloader from the dataset
+        loader = build_dataloader(
+            dataset=dataset,
+            batch=self.batch_size,
             workers=8,
-            seed=0,
-            close_mosaic=0
-        )[0]
+            shuffle=True,
+            rank=-1
+        )
         
         return loader
     
