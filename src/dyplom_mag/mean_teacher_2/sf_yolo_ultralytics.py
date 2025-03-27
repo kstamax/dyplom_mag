@@ -12,7 +12,7 @@ from ultralytics.utils.torch_utils import ModelEMA, de_parallel
 from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
-from sf_yolo_loss import SFYOLOv8Loss
+from dyplom_mag.mean_teacher_2.sf_yolo_loss import SFYOLOv8Loss
 
 BASE_DIR = os.path.dirname(__file__)
 
