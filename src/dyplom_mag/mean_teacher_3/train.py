@@ -122,7 +122,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     def setup_teacher_model(self):
         """Load/create/download model for any task."""
         if isinstance(self.model, torch.nn.Module):  # if model is loaded beforehand. No setup needed
-            raise Exception("Teacher model is not initialized because student is already a torch module")
+            raise Exception(f"Teacher model is not initialized because student is already a torch module {type(self.model)}")
             return
 
         cfg, weights = self.model, None
