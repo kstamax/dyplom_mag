@@ -443,16 +443,10 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             
             # Validation and model saving
             if RANK in {-1, 0}:
-                # Always validate with teacher model
-                self.model, orig_model = self.teacher_model, self.model
-                
                 # Validation
                 if self.args.val or (epoch + 1 >= self.epochs):
                     self.metrics, self.fitness = self.validate()
-                
-                # Restore original model
-                self.model = orig_model
-                
+
                 # Save metrics from teacher model
                 self.save_metrics(metrics={**self.label_loss_items(self.tloss), **self.metrics, **self.lr})
                 
@@ -556,8 +550,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
         The returned dict is expected to contain "fitness" key.
         """
-        metrics = self.validator(self, self.teacher_model)
-        fitness = metrics.pop("fitness", -self.loss.detach().cpu().numpy())  # use loss as fitness measure if not found
-        if not self.best_fitness or self.best_fitness < fitness:
-            self.best_fitness = fitness
-        return metrics, fitness
+        self.model, orig_model = self.teacher_model, self.model
+        print(type(self.model), type(orig_model))
+        res = super().validate()
+        self.model = orig_model
+        return res
