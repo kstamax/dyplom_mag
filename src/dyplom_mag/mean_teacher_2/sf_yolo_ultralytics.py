@@ -130,16 +130,17 @@ class SFYOLOTrainer:
         # Load teacher model
         print(f"Loading teacher model from {teacher_model_path}")
         self.teacher_model = YOLO(teacher_model_path)
-        
+        self.teacher_model.to(self.device)
         # Create student model as a copy of teacher
         print("Creating student model")
         self.student_model = copy.deepcopy(self.teacher_model)
-        
+        self.student_model.to(self.device)
+
         # Find data.yaml file
         self.data_yaml = os.path.join(data_dir, "data.yaml")
         if not os.path.exists(self.data_yaml):
             raise FileNotFoundError(f"Could not find data.yaml in {data_dir}")
-        
+
         # Load data.yaml
         with open(self.data_yaml, errors='ignore') as f:
             self.data_dict = yaml.safe_load(f)
@@ -186,12 +187,12 @@ class SFYOLOTrainer:
         """Initialize the style transfer model"""
         # Create a class with attributes needed by the style transfer function
         class StyleOpt:
-            def __init__(self, style_path, img_size, style_alpha, encoder_path, decoder_path, fc1_path, fc2_path, save_style_samples):
+            def __init__(self, style_path, img_size, style_alpha, encoder_path, decoder_path, fc1_path, fc2_path, save_style_samples, device):
                 self.style_path = style_path
                 self.imgsz = img_size
                 self.style_add_alpha = style_alpha
                 self.random_style = style_path == ""
-                self.cuda = torch.cuda.is_available()
+                self.cuda = device.type == "cuda"
                 self.log_dir = "./enhance_style_samples"
                 self.encoder_path = encoder_path
                 self.decoder_path = decoder_path
@@ -208,7 +209,8 @@ class SFYOLOTrainer:
             self.decoder_path,
             self.fc1_path,
             self.fc2_path,
-            self.save_style_samples
+            self.save_style_samples,
+            self.device
         )
         self.style_transfer = enhance_vgg16(opt)
         
@@ -216,6 +218,14 @@ class SFYOLOTrainer:
         """Main training loop following the paper's approach"""
         # Initialize style transfer
         self.init_style_transfer()
+        
+        # Ensure models are on the correct device before starting
+        self.teacher_model.to(self.device)
+        self.student_model.to(self.device)
+        
+        # Verify models are on the right device
+        print(f"Teacher model device: {next(self.teacher_model.model.parameters()).device}")
+        print(f"Student model device: {next(self.student_model.model.parameters()).device}")
         
         # Create a custom data loader from the training data
         train_loader = self._create_dataloader()
@@ -310,48 +320,62 @@ class SFYOLOTrainer:
             # Set up progress bar
             pbar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch+1}/{self.epochs}")
             
-            # Batch loop
+            # Batch loop 
             for i, batch in pbar:
                 # Check batch structure and extract necessary components
                 if isinstance(batch, dict):
                     # New Ultralytics format where batch is a dict
-                    imgs = batch['img']
+                    imgs = batch['img'].to(self.device)
                     # Extract paths if available
                     paths = batch.get('im_file', [None] * len(imgs))
                     # Add paths to imgs_paths for style transfer
                     self.style_transfer.args.imgs_paths = paths
                 elif isinstance(batch, list) and len(batch) >= 2:
                     # Old format where batch is a list (imgs, targets, paths, ...)
-                    imgs = batch[0]
+                    imgs = batch[0].to(self.device)
                     paths = batch[2] if len(batch) > 2 else [None] * len(imgs)
                     self.style_transfer.args.imgs_paths = paths
                 else:
                     # Fallback
-                    imgs = batch
+                    imgs = batch.to(self.device)
                     paths = [None] * len(imgs)
                     self.style_transfer.args.imgs_paths = paths
                 
                 # Convert images to the format expected by the models
-                imgs_255 = imgs.clone().to(torch.float32).to(self.device)
-                imgs = imgs.to(self.device).float() / 255.0
+                imgs_255 = imgs.clone().to(torch.float32)  # already on device
+                imgs = imgs.float() / 255.0  # already on device
                 
                 # Generate styled images using AdaIN
-                # Check the signature of get_style_images function
-                imgs_style = get_style_images(imgs_255, adain=self.style_transfer) / 255.0
+                if self.style_transfer:
+                    imgs_style = get_style_images(imgs_255, adain=self.style_transfer) / 255.0
+                else:
+                    # If style transfer isn't available, use original images
+                    imgs_style = imgs
                 
                 # Teacher forward pass to generate pseudo-labels
                 with torch.no_grad():
                     self.teacher_model.model.eval()  # Set to eval mode for inference
-                    teacher_output = self.teacher_model.model(imgs)
-                    
-                    # Apply NMS to teacher predictions for pseudo-labeling
-                    teacher_predictions = non_max_suppression(
-                        teacher_output[0] if isinstance(teacher_output, tuple) else teacher_output,
-                        conf_thres=self.conf_thres,
-                        iou_thres=self.iou_thres,
-                        max_det=self.max_gt_boxes
-                    )
-                
+                    # Debug output to verify input shapes and devices
+                    if i == 0:
+                        print(f"Input images shape: {imgs.shape}")
+                        print(f"Input device: {imgs.device}")
+                        print(f"Model device: {next(self.teacher_model.model.parameters()).device}")
+
+                    try:
+                        teacher_output = self.teacher_model.model(imgs)
+
+                        # Apply NMS to teacher predictions for pseudo-labeling
+                        teacher_predictions = non_max_suppression(
+                            teacher_output[0] if isinstance(teacher_output, tuple) else teacher_output,
+                            conf_thres=self.conf_thres,
+                            iou_thres=self.iou_thres,
+                            max_det=self.max_gt_boxes
+                        )
+                    except Exception as e:
+                        print(f"Error in teacher forward pass: {e}")
+                        print("Skipping this batch")
+                        continue
+
                 # Create pseudo-labels from teacher predictions
                 batch_size, ch, height, width = imgs.shape
                 pseudo_labels = []
@@ -385,10 +409,20 @@ class SFYOLOTrainer:
                 
                 # Student forward pass on styled images
                 student_optimizer.zero_grad()
-                student_output = self.student_model.model(imgs_style)
+                try:
+                    student_output = self.student_model.model(imgs_style)
+                except Exception as e:
+                    print(f"Error in student forward pass: {e}")
+                    print("Skipping this batch")
+                    continue
                 
                 # Compute loss using pseudo-labels
-                loss, loss_items = compute_loss(student_output, pseudo_labels, self.teacher_model, self.student_model)
+                try:
+                    loss, loss_items = compute_loss(student_output, pseudo_labels, self.teacher_model, self.student_model)
+                except Exception as e:
+                    print(f"Error computing loss: {e}")
+                    print("Skipping this batch")
+                    continue
                 
                 # Backward pass and optimizer step for student
                 loss.backward()
