@@ -15,9 +15,20 @@ from dyplom_mag.mean_teacher_2.sf_yolo_loss import SFYOLOv8Loss
 from ultralytics.data.build import build_dataloader, build_yolo_dataset
 from ultralytics.cfg import get_cfg
 from ultralytics.utils import LOGGER
+from ultralytics.nn.tasks import DetectionModel
 
 BASE_DIR = os.path.dirname(__file__)
 
+
+class SFDetectionModel(DetectionModel):
+    """Custom wrapper for YOLO model to use SFYOLOv8Loss"""
+    
+    def __init__(self, cfg="yolo11n.yaml", ch=3, nc=None, verbose=True):  # model, input channels, number of classes
+        super().__init__(cfg, ch, nc, verbose)
+
+    def init_criterion(self):
+        """Initialize the custom SF-YOLO loss criterion"""
+        return SFYOLOv8Loss(self)
 
 class WeightEMA(torch.optim.Optimizer):
     def __init__(self, teacher_params, student_params, alpha=0.999):
@@ -182,6 +193,11 @@ class SFYOLOTrainer:
         self.best_teacher_weights = None
         self.best_student_weights = None
         self.metrics_history = []
+        if hasattr(self.teacher_model, 'model'):
+            self.sf_teacher_model = SFDetectionModel(self.teacher_model.model)
+            self.sf_student_model = SFDetectionModel(self.student_model.model)
+        else:
+            raise ValueError("Teacher model doesn't have expected structure")
         
     def init_style_transfer(self):
         """Initialize the style transfer model"""
@@ -292,7 +308,7 @@ class SFYOLOTrainer:
         scheduler = torch.optim.lr_scheduler.LambdaLR(student_optimizer, lr_lambda=cosine_lr_scheduler)
         
         # Initialize the compute loss function
-        compute_loss = self._get_compute_loss()
+        compute_loss = self.sf_student_model.init_criterion()
         
         print(f"Starting Source-Free YOLO training for {self.epochs} epochs")
         t0 = time.time()
@@ -412,7 +428,7 @@ class SFYOLOTrainer:
                 student_output = self.student_model.model(imgs_style)
                 # Compute loss using pseudo-labels
                 print(type(student_output), type(pseudo_labels))
-                loss, loss_items = compute_loss(student_output, pseudo_labels, self.teacher_model, self.student_model)
+                loss, loss_items = compute_loss(student_output, pseudo_labels)
                 
                 # Backward pass and optimizer step for student
                 loss.backward()
