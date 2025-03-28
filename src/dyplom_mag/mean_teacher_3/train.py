@@ -496,7 +496,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     def get_validator(self):
         """Return a DetectionValidator for YOLO model validation."""
         self.loss_names = "box_loss", "cls_loss", "dfl_loss"
-        args = copy(self.args)
+        args = copy.copy(self.args)
         delattr(args, "conf_thres")
         delattr(args, "style_alpha")
         delattr(args, "teacher_alpha")
