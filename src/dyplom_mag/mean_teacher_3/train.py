@@ -161,7 +161,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.teacher_model = self.teacher_model.to(self.device)
         
         # Log setup information
-        LOGGER.info(f"Source-Free Mean Teacher training with:")
+        LOGGER.info("Source-Free Mean Teacher training with:")
         LOGGER.info(f"  - Teacher alpha: {self.teacher_alpha}")
         LOGGER.info(f"  - SSM alpha: {self.ssm_alpha}")
         LOGGER.info(f"  - Style alpha: {self.style_alpha}")
@@ -260,7 +260,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
         batch = self.preprocess_batch(batch)
-        print(batch.keys())
+        
         with torch.no_grad():
             self.teacher_model.eval()
             teacher_output = self.teacher_model(batch["orig_img"])
@@ -494,18 +494,50 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             ckpt["ema"] = None
             torch.save(ckpt, teacher_best)
 
+    # def get_validator(self):
+    #     """Return a DetectionValidator for YOLO model validation."""
+    #     self.loss_names = "box_loss", "cls_loss", "dfl_loss"
+    #     args = copy.copy(self.args)
+    #     delattr(args, "conf_thres")
+    #     delattr(args, "style_alpha")
+    #     delattr(args, "teacher_alpha")
+    #     delattr(args, "max_gt_boxes")
+    #     delattr(args, "style_path")
+    #     delattr(args, "iou_thres")
+    #     delattr(args, "save_style_samples")
+    #     delattr(args, "ssm_alpha")
+    #     return yolo.detect.DetectionValidator(
+    #         self.test_loader, save_dir=self.save_dir, args=args, _callbacks=self.callbacks
+    #     )
+
     def get_validator(self):
         """Return a DetectionValidator for YOLO model validation."""
         self.loss_names = "box_loss", "cls_loss", "dfl_loss"
         args = copy.copy(self.args)
-        delattr(args, "conf_thres")
-        delattr(args, "style_alpha")
-        delattr(args, "teacher_alpha")
-        delattr(args, "max_gt_boxes")
-        delattr(args, "style_path")
-        delattr(args, "iou_thres")
-        delattr(args, "save_style_samples")
-        delattr(args, "ssm_alpha")
+
+        # Remove SF-YOLO specific arguments that the validator doesn't need
+        for attr in ['conf_thres', 'style_alpha', 'teacher_alpha', 'max_gt_boxes', 
+                    'style_path', 'iou_thres', 'save_style_samples', 'ssm_alpha']:
+            if hasattr(args, attr):
+                delattr(args, attr)
+
         return yolo.detect.DetectionValidator(
             self.test_loader, save_dir=self.save_dir, args=args, _callbacks=self.callbacks
         )
+
+    def validate(self):
+        """
+        Override validate method to ensure proper validation with teacher model
+        """
+        # Use teacher model for validation
+        orig_model = self.model
+        self.model = self.teacher_model
+        
+        # Run standard validation
+        metrics = self.validator(self)
+        fitness = metrics.pop("fitness", -self.loss.detach().cpu().numpy())
+        
+        # Restore original model
+        self.model = orig_model
+        
+        return metrics, fitness
