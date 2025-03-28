@@ -128,8 +128,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.imgs_paths = []  # This will be updated during training
                 
         opt = StyleOpt(
-            self.style_path, 
-            self.args.imgsz[0], 
+            self.style_path,
+            self.args.imgsz,
             self.style_alpha,
             self.encoder_path,
             self.decoder_path,
