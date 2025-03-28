@@ -99,11 +99,26 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         return model
     
     def get_teacher_model(self, cfg=None, weights=None, verbose=True):
-        """Return an SF Detection model instead of standard Detection model"""
-        model = DetectionModel(cfg, nc=self.data["nc"], verbose=verbose and RANK == -1)
+        """Return a standard Detection model with synchronized weights from the student model"""
+        # Create teacher model
+        teacher_model = DetectionModel(cfg, nc=self.data["nc"], verbose=verbose and RANK == -1)
+        
+        # If weights are provided, load them first
         if weights:
-            model.load(weights)
-        return model
+            teacher_model.load(weights)
+            
+        # If student model already exists as a module, copy its weights to teacher
+        if isinstance(self.model, torch.nn.Module):
+            # Get state dictionaries
+            teacher_state_dict = teacher_model.state_dict()
+            student_state_dict = self.model.state_dict()
+            
+            # Copy weights from student to teacher for matching keys
+            for key in teacher_state_dict:
+                if key in student_state_dict:
+                    teacher_state_dict[key].copy_(student_state_dict[key])
+        
+        return teacher_model
     
     def setup_model(self):
         """Set up teacher and student models for mean teacher training"""
@@ -122,7 +137,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     def setup_teacher_model(self):
         """Load/create/download model for any task."""
         if isinstance(self.model, torch.nn.Module):  # if model is loaded beforehand. No setup needed
-            raise Exception(f"Teacher model is not initialized because student is already a torch module {type(self.model)}")
+            self.teacher_model = self.get_teacher_model(cfg=self.model.yaml)
             return
 
         cfg, weights = self.model, None
