@@ -259,6 +259,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                                     self.ssm_alpha * teacher_state_dict[name].data)
         
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
+        batch = self.preprocess_batch(batch)
         with torch.no_grad():
             self.teacher_model.eval()
             teacher_output = self.teacher_model(batch["orig_img"])
