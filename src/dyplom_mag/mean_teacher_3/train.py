@@ -260,6 +260,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
         batch = self.preprocess_batch(batch)
+        print(batch.keys())
         with torch.no_grad():
             self.teacher_model.eval()
             teacher_output = self.teacher_model(batch["orig_img"])
@@ -300,7 +301,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         for i, batch in pbar:
             # Run callbacks
             self.run_callbacks("on_train_batch_start")
-            print(batch.keys())
             # Process batch and get loss
             loss, self.loss_items = self._do_one_batch(batch)
             
