@@ -193,11 +193,11 @@ class SFYOLOTrainer:
         self.best_teacher_weights = None
         self.best_student_weights = None
         self.metrics_history = []
-        if hasattr(self.teacher_model, 'model'):
-            self.sf_teacher_model = SFDetectionModel(self.teacher_model.model)
-            self.sf_student_model = SFDetectionModel(self.student_model.model)
-        else:
-            raise ValueError("Teacher model doesn't have expected structure")
+        # if hasattr(self.teacher_model, 'model'):
+        self.sf_teacher_model = SFDetectionModel(teacher_model_path)
+        self.sf_student_model = SFDetectionModel(teacher_model_path)
+        # else:
+            # raise ValueError("Teacher model doesn't have expected structure")
         
     def init_style_transfer(self):
         """Initialize the style transfer model"""
