@@ -219,15 +219,57 @@ class SFYOLOTrainer:
         # Create a custom data loader from the training data
         train_loader = self._create_dataloader()
         
+        # Put models in train mode
+        self.teacher_model.model.train()
+        self.student_model.model.train()
+        
+        # Make sure student model has trainable parameters
+        # First, check if there are any trainable parameters
+        trainable_params = sum(p.numel() for p in self.student_model.model.parameters() if p.requires_grad)
+        
+        if trainable_params == 0:
+            print("No trainable parameters found in student model. Setting detection head to trainable.")
+            # Set detection head layers to trainable
+            for name, param in self.student_model.model.named_parameters():
+                # Target detection head layers - might need to adjust these based on model architecture
+                if any(x in name for x in ['model.24', 'model.23', 'model.22']):
+                    param.requires_grad = True
+            
+            # Verify we now have trainable parameters
+            trainable_params = sum(p.numel() for p in self.student_model.model.parameters() if p.requires_grad)
+            print(f"Now student model has {trainable_params} trainable parameters")
+            
+            if trainable_params == 0:
+                print("Still no trainable parameters. Setting all parameters to trainable.")
+                for param in self.student_model.model.parameters():
+                    param.requires_grad = True
+                trainable_params = sum(p.numel() for p in self.student_model.model.parameters() if p.requires_grad)
+                print(f"Now student model has {trainable_params} trainable parameters")
+                
+                if trainable_params == 0:
+                    raise ValueError("Failed to set any parameters to trainable in student model")
+        
         # Initialize EMA for the student model (for potential use)
         ema = ModelEMA(self.student_model.model)
         
-        # Get model parameters for EMA optimizer
-        teacher_params = [p for p in self.teacher_model.model.parameters() if p.requires_grad]
+        # Get parameters for optimizer (all for teacher, trainable for student)
+        teacher_params = list(self.teacher_model.model.parameters())
         student_params = [p for p in self.student_model.model.parameters() if p.requires_grad]
         
-        # Initialize optimizer for teacher (EMA)
-        teacher_optimizer = WeightEMA(teacher_params, student_params, alpha=self.teacher_alpha)
+        # Check parameter counts
+        print(f"Teacher parameters: {len(teacher_params)}")
+        print(f"Student trainable parameters: {len(student_params)}")
+        
+        # Check parameter counts match for EMA
+        if len(teacher_params) != len(student_params):
+            print(f"Warning: Teacher and student parameter counts don't match: {len(teacher_params)} vs {len(student_params)}")
+            # For EMA, we need matching parameter counts, so use all params
+            student_params_all = list(self.student_model.model.parameters())
+            # Initialize EMA optimizer with all parameters
+            teacher_optimizer = WeightEMA(teacher_params, student_params_all, alpha=self.teacher_alpha)
+        else:
+            # Initialize EMA optimizer with trainable parameters
+            teacher_optimizer = WeightEMA(teacher_params, student_params, alpha=self.teacher_alpha)
         
         # Initialize optimizer for student (SGD or Adam)
         student_optimizer = torch.optim.Adam(student_params, lr=0.001)
@@ -246,6 +288,7 @@ class SFYOLOTrainer:
         
         # Main epoch loop
         for epoch in range(self.epochs):
+            # Ensure models are in train mode at the start of each epoch
             self.teacher_model.model.train()
             self.student_model.model.train()
             
