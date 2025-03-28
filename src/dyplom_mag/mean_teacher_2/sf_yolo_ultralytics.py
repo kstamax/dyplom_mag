@@ -192,7 +192,7 @@ class SFYOLOTrainer:
                 self.imgsz = img_size
                 self.style_add_alpha = style_alpha
                 self.random_style = style_path == ""
-                self.cuda = device.type == "cuda"
+                self.cuda = device == "cuda"
                 self.log_dir = "./enhance_style_samples"
                 self.encoder_path = encoder_path
                 self.decoder_path = decoder_path
