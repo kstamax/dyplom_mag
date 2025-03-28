@@ -299,7 +299,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         for i, batch in pbar:
             # Run callbacks
             self.run_callbacks("on_train_batch_start")
-            
+            print(batch)
             # Process batch and get loss
             loss, self.loss_items = self._do_one_batch(batch)
             
