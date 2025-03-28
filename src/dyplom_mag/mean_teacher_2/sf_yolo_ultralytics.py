@@ -409,20 +409,10 @@ class SFYOLOTrainer:
                 
                 # Student forward pass on styled images
                 student_optimizer.zero_grad()
-                try:
-                    student_output = self.student_model.model(imgs_style)
-                except Exception as e:
-                    print(f"Error in student forward pass: {e}")
-                    print("Skipping this batch")
-                    continue
-                
+                student_output = self.student_model.model(imgs_style)
                 # Compute loss using pseudo-labels
-                try:
-                    loss, loss_items = compute_loss(student_output, pseudo_labels, self.teacher_model, self.student_model)
-                except Exception as e:
-                    print(f"Error computing loss: {e}")
-                    print("Skipping this batch")
-                    continue
+                print(type(student_output), type(pseudo_labels))
+                loss, loss_items = compute_loss(student_output, pseudo_labels, self.teacher_model, self.student_model)
                 
                 # Backward pass and optimizer step for student
                 loss.backward()
@@ -530,55 +520,14 @@ class SFYOLOTrainer:
 
     def _get_compute_loss(self):
         """Get the loss computation function for YOLO"""
-        try:
-            # Use our custom SFYOLOv8Loss implementation
-            loss_fn = SFYOLOv8Loss(self.student_model.model)
+        # Use our custom SFYOLOv8Loss implementation
+        loss_fn = SFYOLOv8Loss(self.student_model.model)
+        
+        def compute_loss(outputs, targets, teacher_model=None, student_model=None):
+            return loss_fn(outputs, targets, teacher_model, student_model)
             
-            def compute_loss(outputs, targets, teacher_model=None, student_model=None):
-                return loss_fn(outputs, targets, teacher_model, student_model)
-                
-            return compute_loss
-            
-        except Exception as e:
-            print(f"Warning: Could not initialize SFYOLOv8Loss: {e}")
-            print("Falling back to built-in loss function")
-            
-            # Try to access the built-in loss function
-            try:
-                from ultralytics.models.yolo.detect import DetectionLoss
-                loss_fn = DetectionLoss(self.student_model.model)
-                
-                # Create a wrapper to match the expected interface
-                def compute_loss(outputs, targets, teacher_model=None, student_model=None):
-                    # Format targets to match what DetectionLoss expects
-                    batch = self._format_pseudo_labels_for_detection_loss(targets)
-                    return loss_fn(outputs, batch)
-                    
-                return compute_loss
-                
-            except ImportError:
-                # Fallback to a very simple loss function
-                print("Warning: Could not import DetectionLoss, using simplified loss function")
-                
-                def compute_loss(outputs, targets, teacher_model=None, student_model=None):
-                    # This is a placeholder - just using a simple MSE loss
-                    if isinstance(outputs, tuple):
-                        pred = outputs[0]
-                    else:
-                        pred = outputs
-                    
-                    # Initialize losses
-                    box_loss = torch.tensor(0.0, device=self.device)
-                    obj_loss = torch.tensor(0.0, device=self.device)
-                    cls_loss = torch.tensor(0.0, device=self.device)
-                    
-                    # Very simplified loss - not recommended for actual training
-                    total_loss = torch.mean(pred**2) * 0.01  # Just to have something
-                    
-                    return total_loss, torch.tensor([box_loss, obj_loss, cls_loss], device=self.device)
-                
-                return compute_loss
-    
+        return compute_loss
+
     def _format_pseudo_labels_for_detection_loss(self, pseudo_labels):
         """Format pseudo-labels for the built-in DetectionLoss"""
         batch = {
