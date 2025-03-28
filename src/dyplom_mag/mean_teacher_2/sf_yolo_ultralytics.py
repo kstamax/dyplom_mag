@@ -521,7 +521,7 @@ class SFYOLOTrainer:
     def _get_compute_loss(self):
         """Get the loss computation function for YOLO"""
         # Use our custom SFYOLOv8Loss implementation
-        loss_fn = SFYOLOv8Loss(self.student_model.model)
+        loss_fn = SFYOLOv8Loss(self.student_model)
         
         def compute_loss(outputs, targets, teacher_model=None, student_model=None):
             return loss_fn(outputs, targets, teacher_model, student_model)
