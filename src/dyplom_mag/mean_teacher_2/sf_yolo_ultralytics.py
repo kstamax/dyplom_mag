@@ -20,34 +20,20 @@ BASE_DIR = os.path.dirname(__file__)
 
 
 class WeightEMA(torch.optim.Optimizer):
-    """
-    Exponential moving average weight optimizer for Mean Teacher model.
-    
-    This optimizer updates teacher model parameters using EMA of student parameters.
-    """
     def __init__(self, teacher_params, student_params, alpha=0.999):
-        """
-        Initialize WeightEMA optimizer.
-        
-        Args:
-            teacher_params: parameters of the teacher model
-            student_params: parameters of the student model
-            alpha: EMA decay rate
-        """
         self.teacher_params = list(teacher_params)
         self.student_params = list(student_params)
         self.alpha = alpha
         
         if len(self.teacher_params) != len(self.student_params):
-            raise ValueError("Teacher and student parameter lengths don't match")
+            raise ValueError(f"Teacher and student parameter lengths don't match: {len(self.teacher_params)} vs {len(self.student_params)}")
         
+        # Package teacher params for optimizer
+        param_groups = [{"params": self.teacher_params}]
         defaults = dict()
-        super(WeightEMA, self).__init__(self.teacher_params, defaults)
+        super(WeightEMA, self).__init__(param_groups, defaults)
 
     def step(self):
-        """
-        Update teacher model parameters with EMA of student parameters.
-        """
         for teacher_param, student_param in zip(self.teacher_params, self.student_params):
             teacher_param.data.mul_(self.alpha).add_(student_param.data, alpha=1 - self.alpha)
 
