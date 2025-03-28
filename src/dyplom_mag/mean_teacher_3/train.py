@@ -13,6 +13,7 @@ from torch import distributed as dist
 from dyplom_mag.mean_teacher_3.detect import SFDetectionModel
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
+from ultralytics.models import yolo
 
 
 ROOT = Path(__file__).parent
@@ -491,3 +492,18 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             ckpt["model"] = self.teacher_model
             ckpt["ema"] = None
             torch.save(ckpt, teacher_best)
+
+    def get_validator(self):
+        """Return a DetectionValidator for YOLO model validation."""
+        self.loss_names = "box_loss", "cls_loss", "dfl_loss"
+        args = copy(self.args)
+        delattr(args, "conf_thres")
+        delattr(args, "style_alpha")
+        delattr(args, "teacher_alpha")
+        delattr(args, "max_gt_boxes")
+        delattr(args, "style_path")
+        delattr(args, "iou_thres")
+        delattr(args, "save_style_samples")
+        return yolo.detect.DetectionValidator(
+            self.test_loader, save_dir=self.save_dir, args=args, _callbacks=self.callbacks
+        )
