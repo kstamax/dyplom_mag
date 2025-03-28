@@ -504,6 +504,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         delattr(args, "style_path")
         delattr(args, "iou_thres")
         delattr(args, "save_style_samples")
+        delattr(args, "ssm_alpha")
         return yolo.detect.DetectionValidator(
             self.test_loader, save_dir=self.save_dir, args=args, _callbacks=self.callbacks
         )
