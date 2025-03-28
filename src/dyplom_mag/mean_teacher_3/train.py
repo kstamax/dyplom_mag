@@ -15,8 +15,8 @@ from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
 
 
-FILE = Path(__file__).resolve()
-DEFAULT_CFG_PATH = FILE / "default.yaml"
+ROOT = Path(__file__).parent
+DEFAULT_CFG_PATH = ROOT / "default.yaml"
 DEFAULT_CFG_DICT = yaml_load(DEFAULT_CFG_PATH)
 for k, v in DEFAULT_CFG_DICT.items():
     if isinstance(v, str) and v.lower() == "none":
