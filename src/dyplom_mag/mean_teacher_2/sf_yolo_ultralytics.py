@@ -308,8 +308,7 @@ class SFYOLOTrainer:
             mloss = torch.zeros(3, device=self.device)  # box, obj, cls
             
             # Set up progress bar
-            pbar = tqdm(enumerate(train_loader), total=len(train_loader), 
-                       desc=f"Epoch {epoch+1}/{self.epochs}")
+            pbar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch+1}/{self.epochs}")
             
             # Batch loop
             for i, batch in pbar:
@@ -337,7 +336,8 @@ class SFYOLOTrainer:
                 imgs = imgs.to(self.device).float() / 255.0
                 
                 # Generate styled images using AdaIN
-                imgs_style = get_style_images(imgs_255, opt=None, adain=self.style_transfer) / 255.0
+                # Check the signature of get_style_images function
+                imgs_style = get_style_images(imgs_255, adain=self.style_transfer) / 255.0
                 
                 # Teacher forward pass to generate pseudo-labels
                 with torch.no_grad():
