@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ultralytics.models.yolo.detect import DetectionTrainer
 from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
-from ultralytics.utils import LOGGER, TQDM, RANK
+from ultralytics.utils import LOGGER, TQDM, RANK, DEFAULT_CFG
 from torch import distributed as dist
 
 from dyplom_mag.mean_teacher_3.detect import SFDetectionModel
@@ -42,7 +42,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     for domain adaptation in object detection.
     """
     
-    def __init__(self, cfg=None, overrides=None, _callbacks=None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """
         Initialize the SF Mean Teacher Trainer.
         
