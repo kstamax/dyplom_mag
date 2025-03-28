@@ -413,8 +413,6 @@ class SFYOLOTrainer:
         # Get the training data path from resolved data_dict
         train_path = self.data_dict['train']
 
-        args = get_cfg()
-        
         # Calculate stride like the original pipeline does
         try:
             stride = max(int(de_parallel(self.student_model.model).stride.max()), 32)
@@ -425,7 +423,7 @@ class SFYOLOTrainer:
         # Build dataset using the official build function
         with torch_distributed_zero_first(-1):  # init dataset *.cache only once if DDP
             dataset = build_yolo_dataset(
-                args=args,
+                cfg=get_cfg(),
                 img_path=train_path,
                 batch=self.batch_size,
                 data=self.data_dict,
