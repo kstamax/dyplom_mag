@@ -52,6 +52,7 @@ class SFYOLOv8Loss(v8DetectionLoss):
         Returns:
             dict: Batch dictionary with 'batch_idx', 'cls', and 'bboxes' keys
         """
+        print(type(pseudo_labels))
         # Ensure we have pseudo-labels to work with
         if pseudo_labels.numel() == 0 or pseudo_labels.shape[0] == 0:
             # Create a minimal default batch with a dummy bbox that won't impact the loss
