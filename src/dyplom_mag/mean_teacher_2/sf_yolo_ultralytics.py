@@ -198,6 +198,7 @@ class SFYOLOTrainer:
                 self.fc1 = fc1_path
                 self.fc2 = fc2_path
                 self.save_style_samples = save_style_samples
+                self.imgs_paths = []  # This will be updated during training
                 
         opt = StyleOpt(
             self.style_path, 
@@ -311,7 +312,26 @@ class SFYOLOTrainer:
                        desc=f"Epoch {epoch+1}/{self.epochs}")
             
             # Batch loop
-            for i, (imgs, targets, paths, _) in pbar:
+            for i, batch in pbar:
+                # Check batch structure and extract necessary components
+                if isinstance(batch, dict):
+                    # New Ultralytics format where batch is a dict
+                    imgs = batch['img']
+                    # Extract paths if available
+                    paths = batch.get('im_file', [None] * len(imgs))
+                    # Add paths to imgs_paths for style transfer
+                    self.style_transfer.args.imgs_paths = paths
+                elif isinstance(batch, list) and len(batch) >= 2:
+                    # Old format where batch is a list (imgs, targets, paths, ...)
+                    imgs = batch[0]
+                    paths = batch[2] if len(batch) > 2 else [None] * len(imgs)
+                    self.style_transfer.args.imgs_paths = paths
+                else:
+                    # Fallback
+                    imgs = batch
+                    paths = [None] * len(imgs)
+                    self.style_transfer.args.imgs_paths = paths
+                
                 # Convert images to the format expected by the models
                 imgs_255 = imgs.clone().to(torch.float32).to(self.device)
                 imgs = imgs.to(self.device).float() / 255.0
@@ -395,6 +415,8 @@ class SFYOLOTrainer:
             print(f"Epoch {epoch+1} results - mAP50-95: {current_map:.4f}, mAP50: {metrics.get('metrics/mAP50', 0):.4f}")
             
             # Save last models
+            self.teacher_model.model.eval()
+            self.student_model.model.eval()
             self.teacher_model.save(self.weights_dir / f"last_teacher.pt")
             self.student_model.save(self.weights_dir / f"last_student.pt")
             
