@@ -7,12 +7,23 @@ from pathlib import Path
 
 from ultralytics.models.yolo.detect import DetectionTrainer
 from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
-from ultralytics.utils import LOGGER, TQDM, RANK, DEFAULT_CFG
+from ultralytics.utils import LOGGER, TQDM, RANK, yaml_load, IterableSimpleNamespace
 from torch import distributed as dist
 
 from dyplom_mag.mean_teacher_3.detect import SFDetectionModel
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
+
+
+FILE = Path(__file__).resolve()
+DEFAULT_CFG_PATH = FILE / "default.yaml"
+DEFAULT_CFG_DICT = yaml_load(DEFAULT_CFG_PATH)
+for k, v in DEFAULT_CFG_DICT.items():
+    if isinstance(v, str) and v.lower() == "none":
+        DEFAULT_CFG_DICT[k] = None
+DEFAULT_CFG_KEYS = DEFAULT_CFG_DICT.keys()
+DEFAULT_CFG = IterableSimpleNamespace(**DEFAULT_CFG_DICT)
+
 
 class WeightEMA(torch.optim.Optimizer):
     """Custom EMA optimizer for the teacher model"""
