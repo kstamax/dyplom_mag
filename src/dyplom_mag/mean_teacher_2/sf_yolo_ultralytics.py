@@ -15,7 +15,7 @@ from dyplom_mag.mean_teacher_2.sf_yolo_loss import SFYOLOv8Loss
 from ultralytics.data.build import build_dataloader, build_yolo_dataset
 from ultralytics.cfg import get_cfg
 from ultralytics.utils import LOGGER
-from ultralytics.nn.tasks import DetectionModel
+from ultralytics.nn.tasks import DetectionModel, attempt_load_one_weight, attempt_load_weights
 
 BASE_DIR = os.path.dirname(__file__)
 
@@ -198,7 +198,7 @@ class SFYOLOTrainer:
         self.sf_student_model = SFDetectionModel(teacher_model_path)
         # else:
             # raise ValueError("Teacher model doesn't have expected structure")
-        
+
     def init_style_transfer(self):
         """Initialize the style transfer model"""
         # Create a class with attributes needed by the style transfer function
