@@ -2,17 +2,19 @@ import os
 import copy
 import time
 import torch
-import torch.nn as nn
 import numpy as np
 from pathlib import Path
 import yaml
 from tqdm import tqdm
 from ultralytics import YOLO
-from ultralytics.utils.torch_utils import ModelEMA, de_parallel
+from ultralytics.utils.torch_utils import ModelEMA, de_parallel, torch_distributed_zero_first
 from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
 from dyplom_mag.mean_teacher_2.sf_yolo_loss import SFYOLOv8Loss
+from ultralytics.data.build import build_dataloader, build_yolo_dataset
+from ultralytics.cfg import get_cfg
+from ultralytics.utils import LOGGER
 
 BASE_DIR = os.path.dirname(__file__)
 
@@ -406,48 +408,33 @@ class SFYOLOTrainer:
         return self.teacher_model, self.student_model, self.metrics_history
     
     def _create_dataloader(self):
-        """Create a dataloader from the Ultralytics dataset"""
-        from ultralytics.data.build import build_dataloader
-        from ultralytics.data.dataset import YOLODataset
-        from ultralytics.utils import colorstr
-        from types import SimpleNamespace
-        
+        """Create a dataloader from the Ultralytics dataset using the official build functions"""
+
         # Get the training data path from resolved data_dict
         train_path = self.data_dict['train']
+
+        args = get_cfg()
         
-        # Create a dataset
-        # First, create a config with attributes similar to what the DetectionTrainer would use
-        args = SimpleNamespace(
-            imgsz=self.img_size,
-            rect=False,
-            cache=None,
-            single_cls=False,
-            augment=True,
-            task='detect',
-            classes=None,
-            fraction=1.0,
-            hyp={}  # Add any hyperparameters needed
-        )
+        # Calculate stride like the original pipeline does
+        try:
+            stride = max(int(de_parallel(self.student_model.model).stride.max()), 32)
+        except:
+            stride = 32
+            LOGGER.warning(f"WARNING ⚠️ Unable to determine stride, using default value {stride}.")
         
-        # Create the dataset directly with the resolved path
-        dataset = YOLODataset(
-            img_path=train_path,
-            imgsz=self.img_size,
-            batch_size=self.batch_size,
-            augment=True,  # augmentation for training
-            hyp=args,
-            rect=False,
-            cache=None,
-            single_cls=False,
-            stride=32,
-            pad=0.0,
-            prefix=colorstr('train: '),
-            task='detect',
-            classes=None,
-            data=self.data_dict  # Use the updated data_dict with absolute paths
-        )
+        # Build dataset using the official build function
+        with torch_distributed_zero_first(-1):  # init dataset *.cache only once if DDP
+            dataset = build_yolo_dataset(
+                args=args,
+                img_path=train_path,
+                batch=self.batch_size,
+                data=self.data_dict,
+                mode='train',
+                rect=False,
+                stride=stride
+            )
         
-        # Use the build_dataloader function with the dataset
+        # Build dataloader
         loader = build_dataloader(
             dataset=dataset,
             batch=self.batch_size,
@@ -523,40 +510,44 @@ class SFYOLOTrainer:
         # Set teacher model to evaluation mode
         self.teacher_model.model.eval()
         
-        # Get validation data path from resolved data_dict
-        val_path = self.data_dict.get('val', '')
-        if not val_path:
-            print("Warning: No validation path found, using training path")
-            val_path = self.data_dict.get('train', '')
-        
         # Run validation using Ultralytics built-in method with updated data_dict
-        results = self.teacher_model.val(
-            data=self.data_dict,  # Use the entire data_dict with absolute paths
-            batch=self.batch_size,
-            imgsz=self.img_size,
-            verbose=False
-        )
-        
-        # Extract metrics
-        metrics = {}
-        if hasattr(results, 'results_dict'):
-            metrics_dict = results.results_dict
-            metrics = {
-                'metrics/precision': metrics_dict.get('metrics/precision(B)', 0),
-                'metrics/recall': metrics_dict.get('metrics/recall(B)', 0),
-                'metrics/mAP50': metrics_dict.get('metrics/mAP50(B)', 0),
-                'metrics/mAP50-95': metrics_dict.get('metrics/mAP50-95(B)', 0)
-            }
-        else:
-            # Fallback if results format is different
-            print("Warning: Could not extract standard metrics format")
-            if hasattr(results, 'box'):
+        try:
+            results = self.teacher_model.val(
+                data=self.data_dict,  # Use the entire data_dict with absolute paths
+                batch=self.batch_size,
+                imgsz=self.img_size,
+                verbose=False
+            )
+            
+            # Extract metrics
+            metrics = {}
+            if hasattr(results, 'results_dict'):
+                metrics_dict = results.results_dict
                 metrics = {
-                    'metrics/precision': getattr(results.box, 'precision', 0),
-                    'metrics/recall': getattr(results.box, 'recall', 0),
-                    'metrics/mAP50': getattr(results.box, 'map50', 0),
-                    'metrics/mAP50-95': getattr(results.box, 'map', 0)
+                    'metrics/precision': metrics_dict.get('metrics/precision(B)', 0),
+                    'metrics/recall': metrics_dict.get('metrics/recall(B)', 0),
+                    'metrics/mAP50': metrics_dict.get('metrics/mAP50(B)', 0),
+                    'metrics/mAP50-95': metrics_dict.get('metrics/mAP50-95(B)', 0)
                 }
+            else:
+                # Fallback if results format is different
+                print("Warning: Could not extract standard metrics format")
+                if hasattr(results, 'box'):
+                    metrics = {
+                        'metrics/precision': getattr(results.box, 'precision', 0),
+                        'metrics/recall': getattr(results.box, 'recall', 0),
+                        'metrics/mAP50': getattr(results.box, 'map50', 0),
+                        'metrics/mAP50-95': getattr(results.box, 'map', 0)
+                    }
+        except Exception as e:
+            print(f"Validation error: {e}")
+            # Provide default metrics in case of validation failure
+            metrics = {
+                'metrics/precision': 0,
+                'metrics/recall': 0,
+                'metrics/mAP50': 0,
+                'metrics/mAP50-95': 0
+            }
         
         return metrics
     
