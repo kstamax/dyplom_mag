@@ -10,7 +10,8 @@ from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
 from ultralytics.utils import LOGGER, TQDM, RANK, yaml_load, IterableSimpleNamespace
 from torch import distributed as dist
 
-from dyplom_mag.mean_teacher_3.detect import SFDetectionModel
+from dyplom_mag.mean_teacher_3.detect import SFDetectionModel, DetectionModel
+from ultralytics.nn.tasks import attempt_load_one_weight
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
 from ultralytics.models import yolo
@@ -53,7 +54,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     This trainer uses a teacher-student architecture with AdaIN style transfer
     for domain adaptation in object detection.
     """
-    
+
     def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """
         Initialize the SF Mean Teacher Trainer.
@@ -79,10 +80,10 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.fc1_path = overrides.get('fc1_path', str(base_dir / "target_augment" / "models" / "fc1.pth"))
         self.fc2_path = overrides.get('fc2_path', str(base_dir / "target_augment" / "models" / "fc2.pth"))
         self.save_style_samples = overrides.get('save_style_samples', False)
-        
+
         # Style transfer model
         self.style_transfer = None
-        
+
         # Initialize teacher and student models (will be properly set in setup_model)
         self.teacher_model = None
         self.teacher_ema = None
@@ -97,17 +98,40 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             model.load(weights)
         return model
     
+    def get_teacher_model(self, cfg=None, weights=None, verbose=True):
+        """Return an SF Detection model instead of standard Detection model"""
+        model = DetectionModel(cfg, nc=self.data["nc"], verbose=verbose and RANK == -1)
+        if weights:
+            model.load(weights)
+        return model
+    
     def setup_model(self):
         """Set up teacher and student models for mean teacher training"""
+        self.setup_teacher_model()
         ckpt = super().setup_model()
         
         # Student model is already set up by parent class
         # Create teacher model as a copy of student model
-        self.teacher_model = copy.deepcopy(self.model)
+        # self.teacher_model = copy.deepcopy(self.model)
         
         # Initialize style transfer
         self.init_style_transfer()
         
+        return ckpt
+    
+    def setup_teacher_model(self):
+        """Load/create/download model for any task."""
+        if isinstance(self.model, torch.nn.Module):  # if model is loaded beforehand. No setup needed
+            return
+
+        cfg, weights = self.model, None
+        ckpt = None
+        if str(self.model).endswith(".pt"):
+            weights, ckpt = attempt_load_one_weight(self.model)
+            cfg = weights.yaml
+        elif isinstance(self.args.pretrained, (str, Path)):
+            weights, _ = attempt_load_one_weight(self.args.pretrained)
+        self.teacher_model = self.get_teacher_model(cfg=cfg, weights=weights, verbose=RANK == -1)  # calls Model(cfg, weights)
         return ckpt
     
     def init_style_transfer(self):
@@ -260,7 +284,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
         batch = self.preprocess_batch(batch)
-        
+        print(batch.keys())
         with torch.no_grad():
             self.teacher_model.eval()
             teacher_output = self.teacher_model(batch["orig_img"])
@@ -494,50 +518,18 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             ckpt["ema"] = None
             torch.save(ckpt, teacher_best)
 
-    # def get_validator(self):
-    #     """Return a DetectionValidator for YOLO model validation."""
-    #     self.loss_names = "box_loss", "cls_loss", "dfl_loss"
-    #     args = copy.copy(self.args)
-    #     delattr(args, "conf_thres")
-    #     delattr(args, "style_alpha")
-    #     delattr(args, "teacher_alpha")
-    #     delattr(args, "max_gt_boxes")
-    #     delattr(args, "style_path")
-    #     delattr(args, "iou_thres")
-    #     delattr(args, "save_style_samples")
-    #     delattr(args, "ssm_alpha")
-    #     return yolo.detect.DetectionValidator(
-    #         self.test_loader, save_dir=self.save_dir, args=args, _callbacks=self.callbacks
-    #     )
-
     def get_validator(self):
         """Return a DetectionValidator for YOLO model validation."""
         self.loss_names = "box_loss", "cls_loss", "dfl_loss"
         args = copy.copy(self.args)
-
-        # Remove SF-YOLO specific arguments that the validator doesn't need
-        for attr in ['conf_thres', 'style_alpha', 'teacher_alpha', 'max_gt_boxes', 
-                    'style_path', 'iou_thres', 'save_style_samples', 'ssm_alpha']:
-            if hasattr(args, attr):
-                delattr(args, attr)
-
+        delattr(args, "conf_thres")
+        delattr(args, "style_alpha")
+        delattr(args, "teacher_alpha")
+        delattr(args, "max_gt_boxes")
+        delattr(args, "style_path")
+        delattr(args, "iou_thres")
+        delattr(args, "save_style_samples")
+        delattr(args, "ssm_alpha")
         return yolo.detect.DetectionValidator(
             self.test_loader, save_dir=self.save_dir, args=args, _callbacks=self.callbacks
         )
-
-    def validate(self):
-        """
-        Override validate method to ensure proper validation with teacher model
-        """
-        # Use teacher model for validation
-        orig_model = self.model
-        self.model = self.teacher_model
-        
-        # Run standard validation
-        metrics = self.validator(self)
-        fitness = metrics.pop("fitness", -self.loss.detach().cpu().numpy())
-        
-        # Restore original model
-        self.model = orig_model
-        
-        return metrics, fitness
