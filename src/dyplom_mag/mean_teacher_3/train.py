@@ -549,3 +549,15 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         return yolo.detect.DetectionValidator(
             self.test_loader, save_dir=self.save_dir, args=args, _callbacks=self.callbacks
         )
+
+    def validate(self):
+        """
+        Runs validation on test set using self.validator.
+
+        The returned dict is expected to contain "fitness" key.
+        """
+        metrics = self.validator(self, self.teacher_model)
+        fitness = metrics.pop("fitness", -self.loss.detach().cpu().numpy())  # use loss as fitness measure if not found
+        if not self.best_fitness or self.best_fitness < fitness:
+            self.best_fitness = fitness
+        return metrics, fitness
