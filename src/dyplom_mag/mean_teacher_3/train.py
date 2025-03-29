@@ -142,8 +142,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
     def setup_model(self):
         """Set up teacher and student models for mean teacher training"""
-        self.setup_teacher_model()
         ckpt = super().setup_model()
+        self.setup_teacher_model()
 
         # Student model is already set up by parent class
         # Create teacher model as a copy of student model
