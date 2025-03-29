@@ -2,7 +2,7 @@ import time
 import copy
 import torch
 from pathlib import Path
-
+import numpy as np
 from ultralytics.models.yolo.detect import DetectionTrainer
 from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
 from ultralytics.utils import LOGGER, TQDM, RANK, yaml_load, IterableSimpleNamespace
@@ -275,6 +275,55 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             imgs_255 = batch["orig_img"].clone() * 255.0
             styled_imgs = get_style_images(imgs_255, adain=self.style_transfer) / 255.0
             batch["img"] = styled_imgs
+        if self.style_transfer and batch["img"].shape[0] > 0:
+            # Log stats about the original and styled images
+            print(f"\n=== Style Transfer Debug ===")
+            orig_img = batch["orig_img"]
+            styled_img = batch["img"]
+            
+            # Check for NaN values
+            print(f"Original image has NaN: {torch.isnan(orig_img).any().item()}")
+            print(f"Styled image has NaN: {torch.isnan(styled_img).any().item()}")
+            
+            # Check value ranges
+            print(f"Original image range: [{orig_img.min().item()}, {orig_img.max().item()}]")
+            print(f"Styled image range: [{styled_img.min().item()}, {styled_img.max().item()}]")
+            
+            # Compute difference
+            diff = torch.abs(orig_img - styled_img).mean().item()
+            print(f"Mean absolute difference: {diff}")
+            
+            # Save sample images occasionally (limit to avoid too many files)
+            if self.epoch % 5 == 0 and hasattr(self, 'debug_counter'):
+                self.debug_counter = getattr(self, 'debug_counter', 0) + 1
+                if self.debug_counter <= 3:  # Limit to 3 samples per epoch
+                    import matplotlib.pyplot as plt
+                    import os
+                    
+                    # Create debug directory
+                    os.makedirs(f"{self.save_dir}/debug", exist_ok=True)
+                    
+                    # Save a few images
+                    for j in range(min(2, batch["img"].shape[0])):
+                        # Convert to numpy and transpose to HWC
+                        o_img = orig_img[j].detach().cpu().numpy().transpose(1, 2, 0)
+                        s_img = styled_img[j].detach().cpu().numpy().transpose(1, 2, 0)
+                        
+                        # Clip to valid range for visualization
+                        o_img = np.clip(o_img, 0, 1)
+                        s_img = np.clip(s_img, 0, 1)
+                        
+                        plt.figure(figsize=(10, 5))
+                        plt.subplot(1, 2, 1)
+                        plt.imshow(o_img)
+                        plt.title("Original")
+                        plt.subplot(1, 2, 2)
+                        plt.imshow(s_img)
+                        plt.title("Styled")
+                        plt.suptitle(f"Epoch {self.epoch}, Batch {self.debug_counter}, Image {j}")
+                        plt.savefig(f"{self.save_dir}/debug/style_e{self.epoch}_b{self.debug_counter}_i{j}.png")
+                        plt.close()
+            print(f"=========================\n")
 
         return batch
 
@@ -325,6 +374,27 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             else pseudo_labels[0]
         )
 
+    @staticmethod
+    def inspect_tensor(tensor, name, max_items=5):
+        """Print debug info about a tensor"""
+        if not isinstance(tensor, torch.Tensor):
+            print(f"{name} is not a tensor, type: {type(tensor)}")
+            return
+            
+        print(f"{name}: shape={tensor.shape}, dtype={tensor.dtype}")
+        print(f"  Range: [{tensor.min().item()}, {tensor.max().item()}], Mean: {tensor.mean().item()}")
+        
+        if tensor.numel() > 0:
+            flat = tensor.detach().flatten()
+            sample = flat[:min(max_items, flat.numel())].cpu().numpy()
+            print(f"  Sample values: {sample}")
+        
+        # Check for potential issues
+        if torch.isnan(tensor).any():
+            print(f"  WARNING: {name} contains NaN values!")
+        if torch.isinf(tensor).any():
+            print(f"  WARNING: {name} contains Inf values!")
+
     def _do_one_batch(self, batch):
         """
         Process one batch for mean teacher training
@@ -347,9 +417,10 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                         + self.ssm_alpha * teacher_state_dict[name].data
                     )
 
+        self.inspect_tensor(batch["img"], "Student input image")
+        self.inspect_tensor(batch["orig_img"], "Teacher input image")
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
         batch = self.preprocess_batch(batch)
-        print(batch.keys())
         with torch.no_grad():
             self.teacher_model.eval()
             teacher_output = self.teacher_model(batch["orig_img"])
@@ -366,16 +437,67 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
         # Get pseudo-labels from teacher predictions
         pseudo_labels = self.get_pseudo_labels(batch["orig_img"], teacher_predictions)
+        # After creating pseudo_labels
+        print(f"\n=== Pseudo-labels Debug ===")
+        print(f"Epoch: {self.epoch}, N/A")
+        print(f"Teacher predictions shape: {[p.shape for p in teacher_predictions]}")
+        print(f"Total pseudo-labels: {pseudo_labels.shape[0]}")
+        print(f"Pseudo-label example (first 5 or fewer):")
+        for j in range(min(5, pseudo_labels.shape[0])):
+            print(f"  {j}: {pseudo_labels[j].cpu().numpy()}")
+        print(f"Any NaN in pseudo-labels: {torch.isnan(pseudo_labels).any().item()}")
+        print(f"=========================\n")
 
         # Student forward pass using styled images
         self.model.train()
         student_output = self.model(batch["img"])
+        self.inspect_tensor(teacher_output, "Teacher output")
+        self.inspect_tensor(student_output, "Student output")
 
         # Compute loss using pseudo-labels
         compute_loss = self.model.init_criterion()
         loss, loss_items = compute_loss(student_output, pseudo_labels)
+        # After computing loss
+        print(f"\n=== Loss Debug ===")
+        print(f"Epoch: {self.epoch}, N/A")
+        print(f"Loss value: {loss.item()}")
+        print(f"Loss items: {loss_items.detach().cpu().numpy()}")
+        print(f"Grad norms:")
+        total_norm = 0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        print(f"  Total grad norm: {total_norm}")
+        print(f"=================\n")
+
+        self.inspect_tensor(loss, "Loss value")
 
         return loss, loss_items
+    
+    @staticmethod
+    def compare_models(teacher, student, name=""):
+        print(f"\n=== Model Comparison {name} ===")
+        # Compare a few sample parameters
+        t_params = dict(teacher.named_parameters())
+        s_params = dict(student.named_parameters())
+        
+        common_keys = list(set(t_params.keys()) & set(s_params.keys()))
+        if not common_keys:
+            print("No common parameter keys found!")
+            return
+            
+        # Sample up to 3 parameters to check
+        sample_keys = common_keys[:min(3, len(common_keys))]
+        for key in sample_keys:
+            t_data = t_params[key].data.flatten()[:5].cpu().numpy()
+            s_data = s_params[key].data.flatten()[:5].cpu().numpy()
+            diff = np.abs(t_data - s_data).mean()
+            print(f"  Param {key}: diff={diff}")
+            print(f"    Teacher: {t_data}")
+            print(f"    Student: {s_data}")
+        print(f"=========================\n")
 
     def _do_train_epoch(self, pbar, ni, epoch):
         """
@@ -386,6 +508,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             ni: Number of iterations
             epoch: Current epoch
         """
+        self.compare_models(self.teacher_model, self.model, f"Start of Epoch {self.epoch}")
         self.model.train()
         self.teacher_model.eval()  # Teacher is always in eval mode for inference
 
@@ -405,6 +528,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
                 # Update teacher with EMA of student
                 self.teacher_optimizer.step()
+                self.compare_models(self.teacher_model, self.model, f"After Update Epoch {self.epoch} Batch {i}")
 
             # Update metrics
             if RANK in {-1, 0}:
@@ -437,6 +561,36 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Plot training samples with pseudo-labels
         if self.args.plots and ni in self.plot_idx:
             self.plot_training_samples(batch, ni)
+
+    def log_training_progress(self):
+        print(f"\n=== Training Progress Debug: Epoch {self.epoch} ===")
+        
+        # Check optimizer state
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            print(f"Optimizer group {i} lr: {param_group['lr']}")
+        
+        # Log EMA update info if available
+        if hasattr(self, 'teacher_optimizer') and isinstance(self.teacher_optimizer, WeightEMA):
+            print(f"Teacher EMA alpha: {self.teacher_optimizer.alpha}")
+        
+        # Check if we're making progress by looking at recent losses
+        if hasattr(self, 'loss_history'):
+            self.loss_history.append(self.loss.item() if hasattr(self, 'loss') else float('nan'))
+        else:
+            self.loss_history = [self.loss.item() if hasattr(self, 'loss') else float('nan')]
+        
+        # Only keep most recent losses
+        self.loss_history = self.loss_history[-10:]
+        
+        if len(self.loss_history) > 1:
+            print(f"Recent losses: {self.loss_history}")
+            loss_diff = self.loss_history[0] - self.loss_history[-1]
+            print(f"Loss change over last {len(self.loss_history)} iterations: {loss_diff}")
+            
+            if abs(loss_diff) < 0.001 * len(self.loss_history):
+                print("WARNING: Loss not changing significantly, training may be stalled")
+        
+        print(f"=========================\n")
 
     def _do_train(self, world_size=1):
         """
@@ -553,6 +707,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.plot_metrics()
 
         self.run_callbacks("on_train_end")
+        self.log_training_progress()
 
     def save_teacher_student(self):
         """Save both teacher and student models"""
@@ -621,12 +776,55 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             _callbacks=self.callbacks,
         )
 
+    def debug_validation(self):
+        print(f"\n=== Validation Debug ===")
+        print(f"Epoch: {self.epoch}")
+        
+        # Check if models differ
+        t_state = {k: v.mean().item() for k, v in self.teacher_model.state_dict().items() 
+                if isinstance(v, torch.Tensor) and v.numel() > 0}
+        s_state = {k: v.mean().item() for k, v in self.model.state_dict().items() 
+                if isinstance(v, torch.Tensor) and v.numel() > 0}
+        
+        common_keys = list(set(t_state.keys()) & set(s_state.keys()))
+        if common_keys:
+            # Calculate average difference
+            diffs = [abs(t_state[k] - s_state[k]) for k in common_keys]
+            avg_diff = sum(diffs) / len(diffs)
+            print(f"Average parameter difference: {avg_diff}")
+        
+        # Sample validation images and predictions
+        if hasattr(self.validator, 'dataloader') and len(self.validator.dataloader) > 0:
+            try:
+                # Get a single batch
+                for val_batch in self.validator.dataloader:
+                    # Get predictions from teacher model
+                    self.teacher_model.eval()
+                    with torch.no_grad():
+                        val_img = val_batch['img'].to(self.device)
+                        pred = self.teacher_model(val_img)
+                    
+                    # Log prediction stats
+                    if isinstance(pred, (list, tuple)):
+                        pred = pred[0]  # Get first output in case of multiple
+                    
+                    print(f"Validation image shape: {val_img.shape}")
+                    print(f"Validation prediction shape: {pred.shape}")
+                    print(f"Prediction stats: min={pred.min().item()}, max={pred.max().item()}, mean={pred.mean().item()}")
+                    
+                    # Only process one batch
+                    break
+            except Exception as e:
+                print(f"Error in validation debug: {e}")
+        print(f"=========================\n")
+
     def validate(self):
         """
         Runs validation on test set using self.validator.
         
         The returned dict is expected to contain "fitness" key.
         """
+        self.debug_validation()
         # Save original references
         orig_model = self.model
         orig_ema = self.ema.ema if self.ema else None
