@@ -101,9 +101,9 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Initialize teacher and student models (will be properly set in setup_model)
         self.teacher_model = None
         self.teacher_ema = None
-        print(type(self.model))
         # Call parent initializer
         super().__init__(cfg, overrides, _callbacks)
+        print("=======================", type(self.model), "=======================")
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Return an SF Detection model instead of standard Detection model"""
