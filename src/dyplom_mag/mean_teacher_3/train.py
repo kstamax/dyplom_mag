@@ -520,9 +520,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
             # Backward pass
             self.scaler.scale(loss).backward()
-            # Add this before optimizer step
-            self.scaler.unscale_(self.optimizer)  # Unscale gradients
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)  # Clip gradients
 
             # Optimize - Gradient accumulation
             if ni - self.last_opt_step >= self.accumulate:
