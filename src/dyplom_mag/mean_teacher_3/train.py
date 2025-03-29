@@ -161,6 +161,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         ):  # if model is loaded beforehand. No setup needed
             self.teacher_model = self.get_teacher_model(cfg=self.model.yaml)
             self.teacher_model.load_state_dict(self.model.state_dict())
+            self.teacher_model.args = self.model.args
             return
 
         cfg, weights = self.model, None
