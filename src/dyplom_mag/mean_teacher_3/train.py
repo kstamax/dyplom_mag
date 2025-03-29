@@ -628,6 +628,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         The returned dict is expected to contain "fitness" key.
         """
         self.model, orig_model = self.teacher_model, self.model
+        print(type(self.model), type(self.ema.ema))
         res = super().validate()
         self.model = orig_model
         return res
