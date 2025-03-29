@@ -155,9 +155,11 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
     def setup_teacher_model(self):
         """Load/create/download model for any task."""
+        print("********************setup teacher************************")
         if isinstance(
             self.teacher_model, torch.nn.Module
         ):  # if model is loaded beforehand. No setup needed
+            print("********************teacher already torch module************************")
             return
 
         cfg, weights = self.model, None
@@ -170,6 +172,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.teacher_model = self.get_teacher_model(
             cfg=cfg, weights=weights, verbose=RANK == -1
         )  # calls Model(cfg, weights)
+        print("********************end teacher setup************************")
+        print(dir(self.teacher_model))
         return ckpt
 
     def init_style_transfer(self):
