@@ -374,26 +374,26 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             else pseudo_labels[0]
         )
 
-    @staticmethod
-    def inspect_tensor(tensor, name, max_items=5):
-        """Print debug info about a tensor"""
-        if not isinstance(tensor, torch.Tensor):
-            print(f"{name} is not a tensor, type: {type(tensor)}")
-            return
+    # @staticmethod
+    # def inspect_tensor(tensor, name, max_items=5):
+    #     """Print debug info about a tensor"""
+    #     if not isinstance(tensor, torch.Tensor):
+    #         print(f"{name} is not a tensor, type: {type(tensor)}")
+    #         return
             
-        print(f"{name}: shape={tensor.shape}, dtype={tensor.dtype}")
-        print(f"  Range: [{tensor.min().item()}, {tensor.max().item()}], Mean: {tensor.mean().item()}")
+    #     print(f"{name}: shape={tensor.shape}, dtype={tensor.dtype}")
+    #     print(f"  Range: [{tensor.min().item()}, {tensor.max().item()}], Mean: {tensor.mean().item()}")
         
-        if tensor.numel() > 0:
-            flat = tensor.detach().flatten()
-            sample = flat[:min(max_items, flat.numel())].cpu().numpy()
-            print(f"  Sample values: {sample}")
+    #     if tensor.numel() > 0:
+    #         flat = tensor.detach().flatten()
+    #         sample = flat[:min(max_items, flat.numel())].cpu().numpy()
+    #         print(f"  Sample values: {sample}")
         
-        # Check for potential issues
-        if torch.isnan(tensor).any():
-            print(f"  WARNING: {name} contains NaN values!")
-        if torch.isinf(tensor).any():
-            print(f"  WARNING: {name} contains Inf values!")
+    #     # Check for potential issues
+    #     if torch.isnan(tensor).any():
+    #         print(f"  WARNING: {name} contains NaN values!")
+    #     if torch.isinf(tensor).any():
+    #         print(f"  WARNING: {name} contains Inf values!")
 
     def _do_one_batch(self, batch):
         """
@@ -417,8 +417,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                         + self.ssm_alpha * teacher_state_dict[name].data
                     )
 
-        self.inspect_tensor(batch["img"], "Student input image")
-        self.inspect_tensor(batch["orig_img"], "Teacher input image")
+        # self.inspect_tensor(batch["img"], "Student input image")
+        # self.inspect_tensor(batch["orig_img"], "Teacher input image")
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
         batch = self.preprocess_batch(batch)
         with torch.no_grad():
@@ -451,8 +451,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Student forward pass using styled images
         self.model.train()
         student_output = self.model(batch["img"])
-        self.inspect_tensor(teacher_output, "Teacher output")
-        self.inspect_tensor(student_output, "Student output")
+        # self.inspect_tensor(teacher_output, "Teacher output")
+        # self.inspect_tensor(student_output, "Student output")
 
         # Compute loss using pseudo-labels
         compute_loss = self.model.init_criterion()
@@ -472,7 +472,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         print(f"  Total grad norm: {total_norm}")
         print(f"=================\n")
 
-        self.inspect_tensor(loss, "Loss value")
+        # self.inspect_tensor(loss, "Loss value")
 
         return loss, loss_items
     
