@@ -101,7 +101,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Initialize teacher and student models (will be properly set in setup_model)
         self.teacher_model = None
         self.teacher_ema = None
-
+        print(type(self.model))
         # Call parent initializer
         super().__init__(cfg, overrides, _callbacks)
 
