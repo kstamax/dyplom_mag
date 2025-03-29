@@ -551,7 +551,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         The returned dict is expected to contain "fitness" key.
         """
         self.model, orig_model = self.teacher_model, self.model
-        print(type(self.model), type(orig_model))
+        self.model.init_criterion()
+        print(type(self.model), type(self.model.loss), type(self.model.criterion))
         res = super().validate()
         self.model = orig_model
         return res
