@@ -137,8 +137,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     def setup_teacher_model(self):
         """Load/create/download model for any task."""
         if isinstance(self.model, torch.nn.Module):  # if model is loaded beforehand. No setup needed
-            weights, _ = attempt_load_one_weight(self.model.yaml)
-            self.teacher_model = self.get_teacher_model(cfg=self.model.yaml, weights=weights)
+            self.teacher_model = self.get_teacher_model(cfg=self.model.yaml)
+            self.teacher_model.args = self.model.args
             return
 
         cfg, weights = self.model, None
