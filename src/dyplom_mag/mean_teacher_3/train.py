@@ -155,11 +155,9 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
     def setup_teacher_model(self):
         """Load/create/download model for any task."""
-        print("********************setup teacher************************")
         if isinstance(
             self.teacher_model, torch.nn.Module
         ):  # if model is loaded beforehand. No setup needed
-            print("********************teacher already torch module************************")
             return
 
         cfg, weights = self.model, None
@@ -172,9 +170,14 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.teacher_model = self.get_teacher_model(
             cfg=cfg, weights=weights, verbose=RANK == -1
         )  # calls Model(cfg, weights)
-        print("********************end teacher setup************************")
-        print(dir(self.teacher_model))
         return ckpt
+
+    def set_model_attributes(self):
+        """Nl = de_parallel(self.model).model[-1].nl  # number of detection layers (to scale hyps)."""
+        self.model.nc = self.teacher_model.nc = self.data["nc"]  # attach number of classes to model
+        self.model.names = self.teacher_model.names = self.data["names"]  # attach class names to model
+        self.model.args = self.teacher_model.args = self.args  # attach hyperparameters to model
+        # TODO: self.model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc
 
     def init_style_transfer(self):
         """Initialize the style transfer model for AdaIN"""
