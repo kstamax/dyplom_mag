@@ -624,13 +624,37 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     def validate(self):
         """
         Runs validation on test set using self.validator.
-
+        
         The returned dict is expected to contain "fitness" key.
         """
-        self.model, orig_model = self.teacher_model, self.model
-        self.ema.ema, orig_ema = self.teacher_model, self.ema.ema
-        print(type(self.model), type(self.ema.ema))
-        res = super().validate()
-        self.model = orig_model
-        self.ema.ema = orig_ema
-        return res
+        # Save original references
+        orig_model = self.model
+        orig_ema = self.ema.ema if self.ema else None
+        
+        # Swap models
+        self.model = self.teacher_model
+        if self.ema:
+            self.ema.ema = self.teacher_model
+        
+        # Create a temporary loss tensor if needed
+        temp_loss = None
+        if not hasattr(self, 'loss') or self.loss is None:
+            temp_loss = torch.zeros(3, device=self.device)  # Create appropriate sized tensor
+            self.loss = temp_loss
+        
+        try:
+            # Run validation
+            metrics = self.validator(self)
+            fitness = metrics.pop("fitness", 0.0)  # Default to 0.0 if no fitness
+            
+            # Return results
+            return metrics, fitness
+        finally:
+            # Restore original state
+            self.model = orig_model
+            if self.ema:
+                self.ema.ema = orig_ema
+            
+            # Remove temp loss if we created one
+            if temp_loss is not None:
+                self.loss = None
