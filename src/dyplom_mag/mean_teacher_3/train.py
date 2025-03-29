@@ -104,6 +104,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Call parent initializer
         super().__init__(cfg, overrides, _callbacks)
         print("=======================", type(self.model), "=======================")
+        self.setup_teacher_model()
 
     def get_model(self, cfg=None, weights=None, verbose=True):
         """Return an SF Detection model instead of standard Detection model"""
@@ -155,11 +156,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     def setup_teacher_model(self):
         """Load/create/download model for any task."""
         if isinstance(
-            self.model, torch.nn.Module
+            self.teacher_model, torch.nn.Module
         ):  # if model is loaded beforehand. No setup needed
-            self.teacher_model = self.get_teacher_model(cfg=self.model.yaml)
-            self.teacher_model.load_state_dict(self.model.state_dict())
-            print(type(self.model))
             return
 
         cfg, weights = self.model, None
