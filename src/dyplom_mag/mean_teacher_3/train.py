@@ -520,6 +520,9 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
             # Backward pass
             self.scaler.scale(loss).backward()
+            # Add this before optimizer step
+            self.scaler.unscale_(self.optimizer)  # Unscale gradients
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)  # Clip gradients
 
             # Optimize - Gradient accumulation
             if ni - self.last_opt_step >= self.accumulate:
@@ -776,47 +779,47 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             _callbacks=self.callbacks,
         )
 
-    def debug_validation(self):
-        print(f"\n=== Validation Debug ===")
-        print(f"Epoch: {self.epoch}")
+    # def debug_validation(self):
+    #     print(f"\n=== Validation Debug ===")
+    #     print(f"Epoch: {self.epoch}")
         
-        # Check if models differ
-        t_state = {k: v.mean().item() for k, v in self.teacher_model.state_dict().items() 
-                if isinstance(v, torch.Tensor) and v.numel() > 0}
-        s_state = {k: v.mean().item() for k, v in self.model.state_dict().items() 
-                if isinstance(v, torch.Tensor) and v.numel() > 0}
+    #     # Check if models differ
+    #     t_state = {k: v.mean().item() for k, v in self.teacher_model.state_dict().items() 
+    #             if isinstance(v, torch.Tensor) and v.numel() > 0}
+    #     s_state = {k: v.mean().item() for k, v in self.model.state_dict().items() 
+    #             if isinstance(v, torch.Tensor) and v.numel() > 0}
         
-        common_keys = list(set(t_state.keys()) & set(s_state.keys()))
-        if common_keys:
-            # Calculate average difference
-            diffs = [abs(t_state[k] - s_state[k]) for k in common_keys]
-            avg_diff = sum(diffs) / len(diffs)
-            print(f"Average parameter difference: {avg_diff}")
+    #     common_keys = list(set(t_state.keys()) & set(s_state.keys()))
+    #     if common_keys:
+    #         # Calculate average difference
+    #         diffs = [abs(t_state[k] - s_state[k]) for k in common_keys]
+    #         avg_diff = sum(diffs) / len(diffs)
+    #         print(f"Average parameter difference: {avg_diff}")
         
-        # Sample validation images and predictions
-        if hasattr(self.validator, 'dataloader') and len(self.validator.dataloader) > 0:
-            try:
-                # Get a single batch
-                for val_batch in self.validator.dataloader:
-                    # Get predictions from teacher model
-                    self.teacher_model.eval()
-                    with torch.no_grad():
-                        val_img = val_batch['img'].to(self.device)
-                        pred = self.teacher_model(val_img)
+    #     # Sample validation images and predictions
+    #     if hasattr(self.validator, 'dataloader') and len(self.validator.dataloader) > 0:
+    #         try:
+    #             # Get a single batch
+    #             for val_batch in self.validator.dataloader:
+    #                 # Get predictions from teacher model
+    #                 self.teacher_model.eval()
+    #                 with torch.no_grad():
+    #                     val_img = val_batch['img'].to(self.device)
+    #                     pred = self.teacher_model(val_img)
                     
-                    # Log prediction stats
-                    if isinstance(pred, (list, tuple)):
-                        pred = pred[0]  # Get first output in case of multiple
+    #                 # Log prediction stats
+    #                 if isinstance(pred, (list, tuple)):
+    #                     pred = pred[0]  # Get first output in case of multiple
                     
-                    print(f"Validation image shape: {val_img.shape}")
-                    print(f"Validation prediction shape: {pred.shape}")
-                    print(f"Prediction stats: min={pred.min().item()}, max={pred.max().item()}, mean={pred.mean().item()}")
+    #                 print(f"Validation image shape: {val_img.shape}")
+    #                 print(f"Validation prediction shape: {pred.shape}")
+    #                 print(f"Prediction stats: min={pred.min().item()}, max={pred.max().item()}, mean={pred.mean().item()}")
                     
-                    # Only process one batch
-                    break
-            except Exception as e:
-                print(f"Error in validation debug: {e}")
-        print(f"=========================\n")
+    #                 # Only process one batch
+    #                 break
+    #         except Exception as e:
+    #             print(f"Error in validation debug: {e}")
+    #     print(f"=========================\n")
 
     def validate(self):
         """
@@ -824,7 +827,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         
         The returned dict is expected to contain "fitness" key.
         """
-        self.debug_validation()
+        # self.debug_validation()
         # Save original references
         orig_model = self.model
         orig_ema = self.ema.ema if self.ema else None
