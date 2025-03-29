@@ -1,8 +1,6 @@
-import os
 import time
 import copy
 import torch
-import numpy as np
 from pathlib import Path
 
 from ultralytics.models.yolo.detect import DetectionTrainer
@@ -161,6 +159,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         ):  # if model is loaded beforehand. No setup needed
             self.teacher_model = self.get_teacher_model(cfg=self.model.yaml)
             self.teacher_model.load_state_dict(self.model.state_dict())
+            print(type(self.model))
             return
 
         cfg, weights = self.model, None
