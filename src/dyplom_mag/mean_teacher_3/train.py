@@ -13,7 +13,6 @@ from ultralytics.nn.tasks import attempt_load_one_weight
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
 from ultralytics.models import yolo
-import random
 
 
 ROOT = Path(__file__).parent
@@ -56,6 +55,7 @@ class WeightEMA(torch.optim.Optimizer):
             #     teacher_norm = sum(p.norm().item() for p in self.teacher_params)
             #     student_norm = sum(p.norm().item() for p in self.student_params)
             #     print(f"EMA Update - Teacher norm: {teacher_norm:.4f}, Student norm: {student_norm:.4f}")
+
 
 class SFMeanTeacherTrainer(DetectionTrainer):
     """
@@ -179,9 +179,15 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
     def set_model_attributes(self):
         """Nl = de_parallel(self.model).model[-1].nl  # number of detection layers (to scale hyps)."""
-        self.model.nc = self.teacher_model.nc = self.data["nc"]  # attach number of classes to model
-        self.model.names = self.teacher_model.names = self.data["names"]  # attach class names to model
-        self.model.args = self.teacher_model.args = self.args  # attach hyperparameters to model
+        self.model.nc = self.teacher_model.nc = self.data[
+            "nc"
+        ]  # attach number of classes to model
+        self.model.names = self.teacher_model.names = self.data[
+            "names"
+        ]  # attach class names to model
+        self.model.args = self.teacher_model.args = (
+            self.args
+        )  # attach hyperparameters to model
         # TODO: self.model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc
 
     def init_style_transfer(self):
@@ -382,28 +388,28 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             if p.grad is not None:
                 param_norm = p.grad.data.norm(2)
                 total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5
+        total_norm = total_norm**0.5
         print(f"  Total grad norm: {total_norm}")
         print(f"=================\n")
 
         # self.inspect_tensor(loss, "Loss value")
 
         return loss, loss_items
-    
+
     @staticmethod
     def compare_models(teacher, student, name=""):
         print(f"\n=== Model Comparison {name} ===")
         # Compare a few sample parameters
         t_params = dict(teacher.named_parameters())
         s_params = dict(student.named_parameters())
-        
+
         common_keys = list(set(t_params.keys()) & set(s_params.keys()))
         if not common_keys:
             print("No common parameter keys found!")
             return
-            
+
         # Sample up to 3 parameters to check
-        sample_keys = common_keys[:min(3, len(common_keys))]
+        sample_keys = common_keys[: min(3, len(common_keys))]
         for key in sample_keys:
             t_data = t_params[key].data.flatten()[:5].cpu().numpy()
             s_data = s_params[key].data.flatten()[:5].cpu().numpy()
@@ -422,7 +428,9 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             ni: Number of iterations
             epoch: Current epoch
         """
-        self.compare_models(self.teacher_model, self.model, f"Start of Epoch {self.epoch}")
+        self.compare_models(
+            self.teacher_model, self.model, f"Start of Epoch {self.epoch}"
+        )
         self.model.train()
         self.teacher_model.eval()  # Teacher is always in eval mode for inference
 
@@ -439,8 +447,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             self.scaler.scale(loss.sum()).backward()
 
             # Optimize - Gradient accumulation
-            print(ni - self.last_opt_step >= self.accumulate, "*"*100)
-            print(nb, ni, self.last_opt_step, self.accumulate, "*"*100)
             if ni - self.last_opt_step >= self.accumulate:
                 self.optimizer_step()
                 self.last_opt_step = ni
@@ -452,7 +458,11 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.teacher_optimizer.step()  # Apply EMA update
                 self.teacher_model.eval()  # Set back to eval mode
                 if i % 2 == 0:  # Only print every 10 batches to avoid too much output
-                    self.compare_models(self.teacher_model, self.model, f"After Update Epoch {self.epoch} Batch {i}")
+                    self.compare_models(
+                        self.teacher_model,
+                        self.model,
+                        f"After Update Epoch {self.epoch} Batch {i}",
+                    )
 
             # Update metrics
             if RANK in {-1, 0}:
@@ -683,29 +693,31 @@ class SFMeanTeacherTrainer(DetectionTrainer):
     def validate(self):
         """
         Runs validation on test set using self.validator.
-        
+
         The returned dict is expected to contain "fitness" key.
         """
         # Save original references
         orig_model = self.model
         orig_ema = self.ema.ema if self.ema else None
-        
+
         # Swap models
         self.model = self.teacher_model
         if self.ema:
             self.ema.ema = self.teacher_model
-        
+
         # Create a temporary loss tensor if needed
         temp_loss = None
-        if not hasattr(self, 'loss') or self.loss is None:
-            temp_loss = torch.zeros(3, device=self.device)  # Create appropriate sized tensor
+        if not hasattr(self, "loss") or self.loss is None:
+            temp_loss = torch.zeros(
+                3, device=self.device
+            )  # Create appropriate sized tensor
             self.loss = temp_loss
-        
+
         try:
             # Run validation
             metrics = self.validator(self)
             fitness = metrics.pop("fitness", 0.0)  # Default to 0.0 if no fitness
-            
+
             # Return results
             return metrics, fitness
         finally:
@@ -713,16 +725,15 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             self.model = orig_model
             if self.ema:
                 self.ema.ema = orig_ema
-            
+
             # Remove temp loss if we created one
             if temp_loss is not None:
                 self.loss = None
 
-
     def plot_pseudo_labels(self, batch, pseudo_labels, max_images=2, save_dir=None):
         """
         Plot images with their corresponding pseudo-labels for debugging purposes.
-        
+
         Args:
             batch (dict): Batch dictionary containing images
             pseudo_labels (torch.Tensor): Tensor of pseudo-labels [img_idx, cls, x, y, w, h]
@@ -734,83 +745,110 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         from matplotlib.colors import to_rgba
         import numpy as np
         import os
-        
+
         # Create directory if needed
         if save_dir is None:
             save_dir = self.save_dir
-        import shutil
-        # shutil.rmtree(f"{save_dir}/pseudo_labels")
+
         os.makedirs(f"{save_dir}/pseudo_labels", exist_ok=True)
-        
+
         # Get colors for different classes
-        colors = plt.cm.hsv(np.linspace(0, 1, self.data['nc']))
-        
+        colors = plt.cm.hsv(np.linspace(0, 1, self.data["nc"]))
+
         # Get images and convert to numpy arrays for plotting
         orig_images = batch["orig_img"].detach().cpu()
         styled_images = batch["img"].detach().cpu()
-        
+
         # Get unique image indices in pseudo-labels
         unique_indices = torch.unique(pseudo_labels[:, 0]).long().cpu().numpy()
-        
+
         # Only process a limited number of images
         for img_idx in unique_indices[:max_images]:
             # Get corresponding image
-            orig_img = orig_images[img_idx].permute(1, 2, 0).numpy()  # HWC for matplotlib
+            orig_img = (
+                orig_images[img_idx].permute(1, 2, 0).numpy()
+            )  # HWC for matplotlib
             styled_img = styled_images[img_idx].permute(1, 2, 0).numpy()
-            
+
             # Clip images to valid range for visualization
             orig_img = np.clip(orig_img, 0, 1)
             styled_img = np.clip(styled_img, 0, 1)
-            
+
             # Get pseudo-labels for this image
             img_labels = pseudo_labels[pseudo_labels[:, 0] == img_idx]
-            
+
             # Create figure with two subplots - original and styled
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-            
+
             # Plot original image with teacher pseudo-labels
             ax1.imshow(orig_img)
             ax1.set_title("Original Image (Teacher Input)")
-            
+
             # Plot styled image - this is what student model sees
             ax2.imshow(styled_img)
             ax2.set_title("Styled Image (Student Input)")
-            
+
             # Add pseudo-label bounding boxes
             height, width = orig_img.shape[:2]
-            
+
             for label in img_labels:
                 _, cls, x, y, w, h = label.cpu().numpy()
                 cls = int(cls)
-                
+
                 # Convert normalized xywh to pixel xyxy
-                x1 = (x - w/2) * width
-                y1 = (y - h/2) * height
-                x2 = (x + w/2) * width
-                y2 = (y + h/2) * height
-                
+                x1 = (x - w / 2) * width
+                y1 = (y - h / 2) * height
+                x2 = (x + w / 2) * width
+                y2 = (y + h / 2) * height
+
                 # Get color for this class
                 color = to_rgba(colors[cls % len(colors)])
-                
+
                 # Add rectangle to both plots
-                rect1 = patches.Rectangle((x1, y1), w*width, h*height, linewidth=2, 
-                                        edgecolor=color, facecolor='none')
-                rect2 = patches.Rectangle((x1, y1), w*width, h*height, linewidth=2, 
-                                        edgecolor=color, facecolor='none')
-                
+                rect1 = patches.Rectangle(
+                    (x1, y1),
+                    w * width,
+                    h * height,
+                    linewidth=2,
+                    edgecolor=color,
+                    facecolor="none",
+                )
+                rect2 = patches.Rectangle(
+                    (x1, y1),
+                    w * width,
+                    h * height,
+                    linewidth=2,
+                    edgecolor=color,
+                    facecolor="none",
+                )
+
                 ax1.add_patch(rect1)
                 ax2.add_patch(rect2)
-                
+
                 # Add class label
-                class_name = self.data['names'][cls]
+                class_name = self.data["names"][cls]
                 conf_text = f"{class_name}"
-                
-                ax1.text(x1, y1-5, conf_text, color='white', fontsize=10,
-                        bbox=dict(facecolor=color, alpha=0.8, edgecolor='none', pad=1))
-                ax2.text(x1, y1-5, conf_text, color='white', fontsize=10,
-                        bbox=dict(facecolor=color, alpha=0.8, edgecolor='none', pad=1))
-            
+
+                ax1.text(
+                    x1,
+                    y1 - 5,
+                    conf_text,
+                    color="white",
+                    fontsize=10,
+                    bbox=dict(facecolor=color, alpha=0.8, edgecolor="none", pad=1),
+                )
+                ax2.text(
+                    x1,
+                    y1 - 5,
+                    conf_text,
+                    color="white",
+                    fontsize=10,
+                    bbox=dict(facecolor=color, alpha=0.8, edgecolor="none", pad=1),
+                )
+
             # Save figure
             plt.tight_layout()
-            plt.savefig(f"{save_dir}/pseudo_labels/pl_epoch{self.epoch}_img{img_idx}.png")
+            plt.savefig(
+                f"{save_dir}/pseudo_labels/pl_epoch{self.epoch}_img{img_idx}.png"
+            )
             plt.close(fig)
