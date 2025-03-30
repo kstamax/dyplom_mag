@@ -446,6 +446,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         for j in range(min(5, pseudo_labels.shape[0])):
             print(f"  {j}: {pseudo_labels[j].cpu().numpy()}")
         print(f"Any NaN in pseudo-labels: {torch.isnan(pseudo_labels).any().item()}")
+        if self.epoch % 1 == 0 and batch.get("batch_idx", torch.tensor([0]))[0] == 0:
+            self.plot_pseudo_labels(batch, pseudo_labels)
         print(f"=========================\n")
 
         # Student forward pass using styled images
@@ -562,36 +564,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         if self.args.plots and ni in self.plot_idx:
             self.plot_training_samples(batch, ni)
 
-    def log_training_progress(self):
-        print(f"\n=== Training Progress Debug: Epoch {self.epoch} ===")
-        
-        # Check optimizer state
-        for i, param_group in enumerate(self.optimizer.param_groups):
-            print(f"Optimizer group {i} lr: {param_group['lr']}")
-        
-        # Log EMA update info if available
-        if hasattr(self, 'teacher_optimizer') and isinstance(self.teacher_optimizer, WeightEMA):
-            print(f"Teacher EMA alpha: {self.teacher_optimizer.alpha}")
-        
-        # Check if we're making progress by looking at recent losses
-        if hasattr(self, 'loss_history'):
-            self.loss_history.append(self.loss.sum().item() if hasattr(self, 'loss') else float('nan'))
-        else:
-            self.loss_history = [self.loss.sum().item() if hasattr(self, 'loss') else float('nan')]
-        
-        # Only keep most recent losses
-        self.loss_history = self.loss_history[-10:]
-        
-        if len(self.loss_history) > 1:
-            print(f"Recent losses: {self.loss_history}")
-            loss_diff = self.loss_history[0] - self.loss_history[-1]
-            print(f"Loss change over last {len(self.loss_history)} iterations: {loss_diff}")
-            
-            if abs(loss_diff) < 0.001 * len(self.loss_history):
-                print("WARNING: Loss not changing significantly, training may be stalled")
-        
-        print(f"=========================\n")
-
     def _do_train(self, world_size=1):
         """
         Override _do_train to implement mean teacher training logic
@@ -707,7 +679,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.plot_metrics()
 
         self.run_callbacks("on_train_end")
-        # self.log_training_progress()
 
     def save_teacher_student(self):
         """Save both teacher and student models"""
@@ -856,3 +827,98 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             # Remove temp loss if we created one
             if temp_loss is not None:
                 self.loss = None
+
+
+    def plot_pseudo_labels(self, batch, pseudo_labels, max_images=2, save_dir=None):
+        """
+        Plot images with their corresponding pseudo-labels for debugging purposes.
+        
+        Args:
+            batch (dict): Batch dictionary containing images
+            pseudo_labels (torch.Tensor): Tensor of pseudo-labels [img_idx, cls, x, y, w, h]
+            max_images (int): Maximum number of images to plot
+            save_dir (str): Directory to save images, if None will use self.save_dir
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+        from matplotlib.colors import to_rgba
+        import numpy as np
+        import os
+        
+        # Create directory if needed
+        if save_dir is None:
+            save_dir = self.save_dir
+        os.makedirs(f"{save_dir}/pseudo_labels", exist_ok=True)
+        
+        # Get colors for different classes
+        colors = plt.cm.hsv(np.linspace(0, 1, self.data['nc']))
+        
+        # Get images and convert to numpy arrays for plotting
+        orig_images = batch["orig_img"].detach().cpu()
+        styled_images = batch["img"].detach().cpu()
+        
+        # Get unique image indices in pseudo-labels
+        unique_indices = torch.unique(pseudo_labels[:, 0]).long().cpu().numpy()
+        
+        # Only process a limited number of images
+        for img_idx in unique_indices[:max_images]:
+            # Get corresponding image
+            orig_img = orig_images[img_idx].permute(1, 2, 0).numpy()  # HWC for matplotlib
+            styled_img = styled_images[img_idx].permute(1, 2, 0).numpy()
+            
+            # Clip images to valid range for visualization
+            orig_img = np.clip(orig_img, 0, 1)
+            styled_img = np.clip(styled_img, 0, 1)
+            
+            # Get pseudo-labels for this image
+            img_labels = pseudo_labels[pseudo_labels[:, 0] == img_idx]
+            
+            # Create figure with two subplots - original and styled
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+            
+            # Plot original image with teacher pseudo-labels
+            ax1.imshow(orig_img)
+            ax1.set_title("Original Image (Teacher Input)")
+            
+            # Plot styled image - this is what student model sees
+            ax2.imshow(styled_img)
+            ax2.set_title("Styled Image (Student Input)")
+            
+            # Add pseudo-label bounding boxes
+            height, width = orig_img.shape[:2]
+            
+            for label in img_labels:
+                _, cls, x, y, w, h = label.cpu().numpy()
+                cls = int(cls)
+                
+                # Convert normalized xywh to pixel xyxy
+                x1 = (x - w/2) * width
+                y1 = (y - h/2) * height
+                x2 = (x + w/2) * width
+                y2 = (y + h/2) * height
+                
+                # Get color for this class
+                color = to_rgba(colors[cls % len(colors)])
+                
+                # Add rectangle to both plots
+                rect1 = patches.Rectangle((x1, y1), w*width, h*height, linewidth=2, 
+                                        edgecolor=color, facecolor='none')
+                rect2 = patches.Rectangle((x1, y1), w*width, h*height, linewidth=2, 
+                                        edgecolor=color, facecolor='none')
+                
+                ax1.add_patch(rect1)
+                ax2.add_patch(rect2)
+                
+                # Add class label
+                class_name = self.data['names'][cls]
+                conf_text = f"{class_name}"
+                
+                ax1.text(x1, y1-5, conf_text, color='white', fontsize=10,
+                        bbox=dict(facecolor=color, alpha=0.8, edgecolor='none', pad=1))
+                ax2.text(x1, y1-5, conf_text, color='white', fontsize=10,
+                        bbox=dict(facecolor=color, alpha=0.8, edgecolor='none', pad=1))
+            
+            # Save figure
+            plt.tight_layout()
+            plt.savefig(f"{save_dir}/pseudo_labels/pl_epoch{self.epoch}_img{img_idx}.png")
+            plt.close(fig)
