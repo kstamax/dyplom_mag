@@ -79,7 +79,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.iou_thres = overrides.get("iou_thres", 0.45)
         self.teacher_alpha = overrides.get("teacher_alpha", 0.999)
         self.ssm_alpha = overrides.get("ssm_alpha", 0.5)
-        self.style_alpha = overrides.get("style_alpha", 0)
+        self.style_alpha = overrides.get("style_alpha", 0.2)
         self.max_gt_boxes = overrides.get("max_gt_boxes", 20)
         self.style_path = overrides.get("style_path", "")
 
@@ -340,17 +340,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         Returns:
             (torch.Tensor): Loss value
         """
-        # SSM weight transfer (after first epoch)
-        if self.epoch > 0 and self.ssm_alpha > 0:
-            student_state_dict = self.model.state_dict()
-            teacher_state_dict = self.teacher_model.state_dict()
-
-            for name, param in student_state_dict.items():
-                if name in teacher_state_dict:
-                    param.data.copy_(
-                        (1.0 - self.ssm_alpha) * param.data
-                        + self.ssm_alpha * teacher_state_dict[name].data
-                    )
 
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
         batch = self.preprocess_batch(batch)
@@ -534,6 +523,17 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         while True:
             self.epoch = epoch
             self.run_callbacks("on_train_epoch_start")
+            # SSM weight transfer (after first epoch)
+            if self.epoch > 0 and self.ssm_alpha > 0:
+                student_state_dict = self.model.state_dict()
+                teacher_state_dict = self.teacher_model.state_dict()
+
+                for name, param in student_state_dict.items():
+                    if name in teacher_state_dict:
+                        param.data.copy_(
+                            (1.0 - self.ssm_alpha) * param.data
+                            + self.ssm_alpha * teacher_state_dict[name].data
+                        )
 
             self.model.train()
             self.teacher_model.eval()
@@ -755,12 +755,12 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Only process a limited number of images
         for img_idx in unique_indices[:max_images]:
             # Get corresponding image
-            orig_img = orig_images[img_idx].permute(1, 2, 0).numpy() * 255  # HWC for matplotlib
-            styled_img = styled_images[img_idx].permute(1, 2, 0).numpy() * 255
+            orig_img = orig_images[img_idx].permute(1, 2, 0).numpy()  # HWC for matplotlib
+            styled_img = styled_images[img_idx].permute(1, 2, 0).numpy()
             
             # Clip images to valid range for visualization
-            orig_img = np.clip(orig_img, 0, 255).astype(np.uint8)
-            styled_img = np.clip(styled_img, 0, 255).astype(np.uint8)
+            orig_img = np.clip(orig_img, 0, 1)
+            styled_img = np.clip(styled_img, 0, 1)
             
             # Get pseudo-labels for this image
             img_labels = pseudo_labels[pseudo_labels[:, 0] == img_idx]
