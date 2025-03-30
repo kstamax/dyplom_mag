@@ -473,7 +473,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.teacher_model.zero_grad()  # Clear any gradients
                 self.teacher_optimizer.step()  # Apply EMA update
                 self.teacher_model.eval()  # Set back to eval mode
-                if i % 10 == 0:  # Only print every 10 batches to avoid too much output
+                if i % 2 == 0:  # Only print every 10 batches to avoid too much output
                     self.compare_models(self.teacher_model, self.model, f"After Update Epoch {self.epoch} Batch {i}")
 
             # Update metrics
