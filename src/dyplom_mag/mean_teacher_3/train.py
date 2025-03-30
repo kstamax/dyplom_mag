@@ -437,6 +437,9 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.model.train()
         self.teacher_model.eval()  # Teacher is always in eval mode for inference
 
+        nb = len(self.train_loader)  # number of batches
+        ni = self.epoch * nb  # start ni for this epoch
+
         for i, batch in pbar:
             # Run callbacks
             self.run_callbacks("on_train_batch_start")
