@@ -438,11 +438,11 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.teacher_model.eval()  # Teacher is always in eval mode for inference
 
         nb = len(self.train_loader)  # number of batches
-        ni = self.epoch * nb  # start ni for this epoch
 
         for i, batch in pbar:
             # Run callbacks
             self.run_callbacks("on_train_batch_start")
+            ni = i + self.epoch * nb  # start ni for this epoch
             # Process batch and get loss
             loss, self.loss_items = self._do_one_batch(batch)
 
@@ -451,7 +451,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
             # Optimize - Gradient accumulation
             print(ni - self.last_opt_step >= self.accumulate, "*"*100)
-            print(ni, self.last_opt_step, self.accumulate, "*"*100)
+            print(nb, ni, self.last_opt_step, self.accumulate, "*"*100)
             if ni - self.last_opt_step >= self.accumulate:
                 self.optimizer_step()
                 self.last_opt_step = ni
