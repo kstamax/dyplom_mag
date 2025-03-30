@@ -755,12 +755,12 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Only process a limited number of images
         for img_idx in unique_indices[:max_images]:
             # Get corresponding image
-            orig_img = orig_images[img_idx].permute(1, 2, 0).numpy()  # HWC for matplotlib
-            styled_img = styled_images[img_idx].permute(1, 2, 0).numpy()
+            orig_img = orig_images[img_idx].permute(1, 2, 0).numpy() * 255  # HWC for matplotlib
+            styled_img = styled_images[img_idx].permute(1, 2, 0).numpy() * 255
             
             # Clip images to valid range for visualization
-            orig_img = np.clip(orig_img, 0, 1)
-            styled_img = np.clip(styled_img, 0, 1)
+            orig_img = np.clip(orig_img, 0, 255).astype(np.uint8)
+            styled_img = np.clip(styled_img, 0, 255).astype(np.uint8)
             
             # Get pseudo-labels for this image
             img_labels = pseudo_labels[pseudo_labels[:, 0] == img_idx]
