@@ -374,7 +374,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # After computing loss
         print(f"\n=== Loss Debug ===")
         print(f"Epoch: {self.epoch}, N/A")
-        print(f"Loss value: {loss.sum().item()}")
+        print(f"Loss value: {loss}")
         print(f"Loss items: {loss_items.detach().cpu().numpy()}")
         print(f"Grad norms:")
         total_norm = 0
@@ -436,7 +436,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             loss, self.loss_items = self._do_one_batch(batch)
 
             # Backward pass
-            self.scaler.scale(loss.sum()).backward()
+            self.scaler.scale(loss).backward()
 
             # Optimize - Gradient accumulation
             print(ni - self.last_opt_step >= self.accumulate, "*"*100)
