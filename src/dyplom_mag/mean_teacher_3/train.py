@@ -371,8 +371,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Get pseudo-labels from teacher predictions
         pseudo_labels = self.get_pseudo_labels(batch["orig_img"], teacher_predictions)
 
-        if self.epoch % 1 == 0 and batch.get("batch_idx", torch.tensor([0]))[0] == 0:
-            self.plot_pseudo_labels(batch, pseudo_labels)
+        # if self.epoch % 1 == 0 and batch.get("batch_idx", torch.tensor([0]))[0] == 0:
+        self.plot_pseudo_labels(batch, pseudo_labels)
 
         # Student forward pass using styled images
         self.model.train()
@@ -738,6 +738,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Create directory if needed
         if save_dir is None:
             save_dir = self.save_dir
+        import shutil
+        shutil.rmtree(f"{save_dir}/pseudo_labels")
         os.makedirs(f"{save_dir}/pseudo_labels", exist_ok=True)
         
         # Get colors for different classes
