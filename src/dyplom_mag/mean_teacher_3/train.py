@@ -52,7 +52,7 @@ class WeightEMA(torch.optim.Optimizer):
                 student_param.data, alpha=1 - self.alpha
             )
             # Add some debug output to verify EMA update
-            if random.random() < 0.01:  # Print debug info with 1% probability to avoid spam
+            if random.random() < 0.1:  # Print debug info with 1% probability to avoid spam
                 teacher_norm = sum(p.norm().item() for p in self.teacher_params)
                 student_norm = sum(p.norm().item() for p in self.student_params)
                 print(f"EMA Update - Teacher norm: {teacher_norm:.4f}, Student norm: {student_norm:.4f}")
