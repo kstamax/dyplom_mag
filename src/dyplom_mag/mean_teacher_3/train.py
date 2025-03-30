@@ -460,7 +460,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # After computing loss
         print(f"\n=== Loss Debug ===")
         print(f"Epoch: {self.epoch}, N/A")
-        print(f"Loss value: {loss.item()}")
+        print(f"Loss value: {loss.sum().item()}")
         print(f"Loss items: {loss_items.detach().cpu().numpy()}")
         print(f"Grad norms:")
         total_norm = 0
@@ -519,7 +519,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             loss, self.loss_items = self._do_one_batch(batch)
 
             # Backward pass
-            self.scaler.scale(loss).backward()
+            self.scaler.scale(loss.sum()).backward()
 
             # Optimize - Gradient accumulation
             if ni - self.last_opt_step >= self.accumulate:
@@ -575,9 +575,9 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         
         # Check if we're making progress by looking at recent losses
         if hasattr(self, 'loss_history'):
-            self.loss_history.append(self.loss.item() if hasattr(self, 'loss') else float('nan'))
+            self.loss_history.append(self.loss.sum().item() if hasattr(self, 'loss') else float('nan'))
         else:
-            self.loss_history = [self.loss.item() if hasattr(self, 'loss') else float('nan')]
+            self.loss_history = [self.loss.sum().item() if hasattr(self, 'loss') else float('nan')]
         
         # Only keep most recent losses
         self.loss_history = self.loss_history[-10:]
