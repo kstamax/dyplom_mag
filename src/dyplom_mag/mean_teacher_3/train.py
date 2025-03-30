@@ -275,55 +275,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             imgs_255 = batch["orig_img"].clone() * 255.0
             styled_imgs = get_style_images(imgs_255, adain=self.style_transfer) / 255.0
             batch["img"] = styled_imgs
-        if self.style_transfer and batch["img"].shape[0] > 0:
-            # Log stats about the original and styled images
-            print(f"\n=== Style Transfer Debug ===")
-            orig_img = batch["orig_img"]
-            styled_img = batch["img"]
-            
-            # Check for NaN values
-            print(f"Original image has NaN: {torch.isnan(orig_img).any().item()}")
-            print(f"Styled image has NaN: {torch.isnan(styled_img).any().item()}")
-            
-            # Check value ranges
-            print(f"Original image range: [{orig_img.min().item()}, {orig_img.max().item()}]")
-            print(f"Styled image range: [{styled_img.min().item()}, {styled_img.max().item()}]")
-            
-            # Compute difference
-            diff = torch.abs(orig_img - styled_img).mean().item()
-            print(f"Mean absolute difference: {diff}")
-            
-            # Save sample images occasionally (limit to avoid too many files)
-            if self.epoch % 5 == 0 and hasattr(self, 'debug_counter'):
-                self.debug_counter = getattr(self, 'debug_counter', 0) + 1
-                if self.debug_counter <= 3:  # Limit to 3 samples per epoch
-                    import matplotlib.pyplot as plt
-                    import os
-                    
-                    # Create debug directory
-                    os.makedirs(f"{self.save_dir}/debug", exist_ok=True)
-                    
-                    # Save a few images
-                    for j in range(min(2, batch["img"].shape[0])):
-                        # Convert to numpy and transpose to HWC
-                        o_img = orig_img[j].detach().cpu().numpy().transpose(1, 2, 0)
-                        s_img = styled_img[j].detach().cpu().numpy().transpose(1, 2, 0)
-                        
-                        # Clip to valid range for visualization
-                        o_img = np.clip(o_img, 0, 1)
-                        s_img = np.clip(s_img, 0, 1)
-                        
-                        plt.figure(figsize=(10, 5))
-                        plt.subplot(1, 2, 1)
-                        plt.imshow(o_img)
-                        plt.title("Original")
-                        plt.subplot(1, 2, 2)
-                        plt.imshow(s_img)
-                        plt.title("Styled")
-                        plt.suptitle(f"Epoch {self.epoch}, Batch {self.debug_counter}, Image {j}")
-                        plt.savefig(f"{self.save_dir}/debug/style_e{self.epoch}_b{self.debug_counter}_i{j}.png")
-                        plt.close()
-            print(f"=========================\n")
 
         return batch
 
@@ -417,8 +368,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                         + self.ssm_alpha * teacher_state_dict[name].data
                     )
 
-        # self.inspect_tensor(batch["img"], "Student input image")
-        # self.inspect_tensor(batch["orig_img"], "Teacher input image")
         # Teacher forward pass to generate pseudo-labels (in eval mode, no grad)
         batch = self.preprocess_batch(batch)
         with torch.no_grad():
@@ -437,24 +386,14 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
         # Get pseudo-labels from teacher predictions
         pseudo_labels = self.get_pseudo_labels(batch["orig_img"], teacher_predictions)
-        # After creating pseudo_labels
-        print(f"\n=== Pseudo-labels Debug ===")
-        print(f"Epoch: {self.epoch}, N/A")
-        print(f"Teacher predictions shape: {[p.shape for p in teacher_predictions]}")
-        print(f"Total pseudo-labels: {pseudo_labels.shape[0]}")
-        print(f"Pseudo-label example (first 5 or fewer):")
-        for j in range(min(5, pseudo_labels.shape[0])):
-            print(f"  {j}: {pseudo_labels[j].cpu().numpy()}")
-        print(f"Any NaN in pseudo-labels: {torch.isnan(pseudo_labels).any().item()}")
+
         if self.epoch % 1 == 0 and batch.get("batch_idx", torch.tensor([0]))[0] == 0:
             self.plot_pseudo_labels(batch, pseudo_labels)
-        print(f"=========================\n")
 
         # Student forward pass using styled images
         self.model.train()
+        self.model.zero_grad()
         student_output = self.model(batch["img"])
-        # self.inspect_tensor(teacher_output, "Teacher output")
-        # self.inspect_tensor(student_output, "Student output")
 
         # Compute loss using pseudo-labels
         compute_loss = self.model.init_criterion()
@@ -527,10 +466,15 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             if ni - self.last_opt_step >= self.accumulate:
                 self.optimizer_step()
                 self.last_opt_step = ni
-
+                if self.ema:
+                    self.ema.update(self.model)
                 # Update teacher with EMA of student
-                self.teacher_optimizer.step()
-                self.compare_models(self.teacher_model, self.model, f"After Update Epoch {self.epoch} Batch {i}")
+                self.teacher_model.train()  # Temporarily set to train mode
+                self.teacher_model.zero_grad()  # Clear any gradients
+                self.teacher_optimizer.step()  # Apply EMA update
+                self.teacher_model.eval()  # Set back to eval mode
+                if i % 10 == 0:  # Only print every 10 batches to avoid too much output
+                    self.compare_models(self.teacher_model, self.model, f"After Update Epoch {self.epoch} Batch {i}")
 
             # Update metrics
             if RANK in {-1, 0}:
@@ -601,7 +545,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         while True:
             self.epoch = epoch
             self.run_callbacks("on_train_epoch_start")
-            self.scheduler.step()
 
             self.model.train()
             self.teacher_model.eval()
@@ -623,6 +566,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
             # Train for one epoch
             self._do_train_epoch(pbar, ni, epoch)
+            self.scheduler.step()
 
             # Update learning rate
             self.lr = {
