@@ -13,6 +13,7 @@ from ultralytics.nn.tasks import attempt_load_one_weight
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
 from ultralytics.models import yolo
+import random
 
 
 ROOT = Path(__file__).parent
