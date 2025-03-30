@@ -50,7 +50,11 @@ class WeightEMA(torch.optim.Optimizer):
             teacher_param.data.mul_(self.alpha).add_(
                 student_param.data, alpha=1 - self.alpha
             )
-
+            # Add some debug output to verify EMA update
+            if random.random() < 0.01:  # Print debug info with 1% probability to avoid spam
+                teacher_norm = sum(p.norm().item() for p in self.teacher_params)
+                student_norm = sum(p.norm().item() for p in self.student_params)
+                print(f"EMA Update - Teacher norm: {teacher_norm:.4f}, Student norm: {student_norm:.4f}")
 
 class SFMeanTeacherTrainer(DetectionTrainer):
     """
@@ -324,27 +328,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             if len(pseudo_labels[0]) > 0
             else pseudo_labels[0]
         )
-
-    # @staticmethod
-    # def inspect_tensor(tensor, name, max_items=5):
-    #     """Print debug info about a tensor"""
-    #     if not isinstance(tensor, torch.Tensor):
-    #         print(f"{name} is not a tensor, type: {type(tensor)}")
-    #         return
-            
-    #     print(f"{name}: shape={tensor.shape}, dtype={tensor.dtype}")
-    #     print(f"  Range: [{tensor.min().item()}, {tensor.max().item()}], Mean: {tensor.mean().item()}")
-        
-    #     if tensor.numel() > 0:
-    #         flat = tensor.detach().flatten()
-    #         sample = flat[:min(max_items, flat.numel())].cpu().numpy()
-    #         print(f"  Sample values: {sample}")
-        
-    #     # Check for potential issues
-    #     if torch.isnan(tensor).any():
-    #         print(f"  WARNING: {name} contains NaN values!")
-    #     if torch.isinf(tensor).any():
-    #         print(f"  WARNING: {name} contains Inf values!")
 
     def _do_one_batch(self, batch):
         """
@@ -691,55 +674,12 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             _callbacks=self.callbacks,
         )
 
-    # def debug_validation(self):
-    #     print(f"\n=== Validation Debug ===")
-    #     print(f"Epoch: {self.epoch}")
-        
-    #     # Check if models differ
-    #     t_state = {k: v.mean().item() for k, v in self.teacher_model.state_dict().items() 
-    #             if isinstance(v, torch.Tensor) and v.numel() > 0}
-    #     s_state = {k: v.mean().item() for k, v in self.model.state_dict().items() 
-    #             if isinstance(v, torch.Tensor) and v.numel() > 0}
-        
-    #     common_keys = list(set(t_state.keys()) & set(s_state.keys()))
-    #     if common_keys:
-    #         # Calculate average difference
-    #         diffs = [abs(t_state[k] - s_state[k]) for k in common_keys]
-    #         avg_diff = sum(diffs) / len(diffs)
-    #         print(f"Average parameter difference: {avg_diff}")
-        
-    #     # Sample validation images and predictions
-    #     if hasattr(self.validator, 'dataloader') and len(self.validator.dataloader) > 0:
-    #         try:
-    #             # Get a single batch
-    #             for val_batch in self.validator.dataloader:
-    #                 # Get predictions from teacher model
-    #                 self.teacher_model.eval()
-    #                 with torch.no_grad():
-    #                     val_img = val_batch['img'].to(self.device)
-    #                     pred = self.teacher_model(val_img)
-                    
-    #                 # Log prediction stats
-    #                 if isinstance(pred, (list, tuple)):
-    #                     pred = pred[0]  # Get first output in case of multiple
-                    
-    #                 print(f"Validation image shape: {val_img.shape}")
-    #                 print(f"Validation prediction shape: {pred.shape}")
-    #                 print(f"Prediction stats: min={pred.min().item()}, max={pred.max().item()}, mean={pred.mean().item()}")
-                    
-    #                 # Only process one batch
-    #                 break
-    #         except Exception as e:
-    #             print(f"Error in validation debug: {e}")
-    #     print(f"=========================\n")
-
     def validate(self):
         """
         Runs validation on test set using self.validator.
         
         The returned dict is expected to contain "fitness" key.
         """
-        # self.debug_validation()
         # Save original references
         orig_model = self.model
         orig_ema = self.ema.ema if self.ema else None
