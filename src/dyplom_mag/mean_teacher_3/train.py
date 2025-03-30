@@ -51,11 +51,11 @@ class WeightEMA(torch.optim.Optimizer):
             teacher_param.data.mul_(self.alpha).add_(
                 student_param.data, alpha=1 - self.alpha
             )
-            # Add some debug output to verify EMA update
-            if random.random() < 0.1:  # Print debug info with 1% probability to avoid spam
-                teacher_norm = sum(p.norm().item() for p in self.teacher_params)
-                student_norm = sum(p.norm().item() for p in self.student_params)
-                print(f"EMA Update - Teacher norm: {teacher_norm:.4f}, Student norm: {student_norm:.4f}")
+            # # Add some debug output to verify EMA update
+            # if random.random() < 0.1:  # Print debug info with 1% probability to avoid spam
+            #     teacher_norm = sum(p.norm().item() for p in self.teacher_params)
+            #     student_norm = sum(p.norm().item() for p in self.student_params)
+            #     print(f"EMA Update - Teacher norm: {teacher_norm:.4f}, Student norm: {student_norm:.4f}")
 
 class SFMeanTeacherTrainer(DetectionTrainer):
     """
@@ -365,7 +365,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
 
         # Student forward pass using styled images
         self.model.train()
-        self.model.zero_grad()
+        # self.model.zero_grad()
         student_output = self.model(batch["img"])
 
         # Compute loss using pseudo-labels
