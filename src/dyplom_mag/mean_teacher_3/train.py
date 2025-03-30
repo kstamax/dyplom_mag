@@ -707,7 +707,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.plot_metrics()
 
         self.run_callbacks("on_train_end")
-        self.log_training_progress()
+        # self.log_training_progress()
 
     def save_teacher_student(self):
         """Save both teacher and student models"""
