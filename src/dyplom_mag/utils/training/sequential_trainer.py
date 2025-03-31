@@ -9,8 +9,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import yaml
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, Optional
 
 BASE_DIR = os.path.dirname(__file__)
 
@@ -22,10 +23,19 @@ class TrainingConfig:
     starting_model_path: str
     output_base_path: str
     final_model_template: str = "model_after_dataset_{}.pt"
-    training_kwargs: dict[str, Any] = field(default_factory=dict)
+    training_kwargs: Dict[str, Any] = field(default_factory=dict)
+    training_kwargs_yaml: Optional[str] = None
     is_sf_yolo: bool = False
     num_datasets: int | None = None
     parallel: int = 1  # Number of parallel training processes
+
+    def __post_init__(self):
+        """Process YAML config if provided."""
+        if self.training_kwargs_yaml and os.path.exists(self.training_kwargs_yaml):
+            with open(self.training_kwargs_yaml, 'r') as f:
+                self.training_kwargs = yaml.safe_load(f)
+        elif self.training_kwargs_yaml:
+            raise FileNotFoundError(f"Training kwargs YAML file not found: {self.training_kwargs_yaml}")
 
 
 def train_sequential(config: TrainingConfig):
@@ -56,6 +66,11 @@ def train_sequential(config: TrainingConfig):
     saved_models = []
     parallel = max(1, config.parallel)  # Ensure at least 1
 
+    # Create a temporary YAML file for the training kwargs
+    training_kwargs_yaml = os.path.join(BASE_DIR, "temp_training_kwargs.yaml")
+    with open(training_kwargs_yaml, 'w') as f:
+        yaml.dump(config.training_kwargs, f)
+
     # Process mini-datasets in groups of size 'parallel'
     for start_idx in range(0, len(mini_datasets), parallel):
         end_idx = min(start_idx + parallel, len(mini_datasets))
@@ -84,7 +99,7 @@ def train_sequential(config: TrainingConfig):
             output_model_path = config.final_model_template.format(dataset_idx)
             temp_output_paths.append(output_model_path)
 
-            # Build training command with kwargs
+            # Build training command
             cmd = [
                 sys.executable,
                 os.path.join(BASE_DIR, "training_script.py"),
@@ -92,15 +107,13 @@ def train_sequential(config: TrainingConfig):
                 current_model_path,
                 "--output_model_path",
                 output_model_path,
+                "--training_kwargs_yaml",
+                training_kwargs_yaml,
             ]
 
             # Add SF YOLO flag if needed
             if config.is_sf_yolo:
                 cmd.append("--is_sf_yolo")
-
-            # Add training kwargs
-            for key, value in config.training_kwargs.items():
-                cmd.extend(["--training_kwargs", f"{key}={value}"])
 
             print(f"Starting training for dataset {dataset_idx}: {dataset_name}")
 
@@ -160,6 +173,10 @@ def train_sequential(config: TrainingConfig):
             # Use the last successfully trained model as input for the next batch
             if temp_output_paths:
                 current_model_path = temp_output_paths[-1]
+
+    # Clean up the temporary YAML file
+    if os.path.exists(training_kwargs_yaml):
+        os.remove(training_kwargs_yaml)
 
     if parallel > 1:
         print(
