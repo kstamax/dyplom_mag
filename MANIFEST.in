@@ -1,2 +1,2 @@
 include src/dyplom_mag/target_augment/pre_trained/vgg16_ori.pth
-include src/dyplom_mag/mean_teacher_3/default.yaml
+include src/dyplom_mag/mean_teacher_training/default.yaml
