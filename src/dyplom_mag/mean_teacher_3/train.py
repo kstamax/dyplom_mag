@@ -447,6 +447,8 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             self.scaler.scale(loss.sum()).backward()
 
             # Optimize - Gradient accumulation
+            print(ni - self.last_opt_step >= self.accumulate, "*" * 100)
+            print(nb, ni, self.last_opt_step, self.accumulate, "*" * 100)
             if ni - self.last_opt_step >= self.accumulate:
                 self.optimizer_step()
                 self.last_opt_step = ni
