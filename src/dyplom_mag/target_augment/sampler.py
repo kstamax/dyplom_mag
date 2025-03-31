@@ -23,4 +23,4 @@ class InfiniteSamplerWrapper(data.sampler.Sampler):
         return iter(InfiniteSampler(self.num_samples))
 
     def __len__(self):
-        return 2 ** 31
+        return 2**31

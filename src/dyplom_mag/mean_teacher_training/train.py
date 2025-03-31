@@ -1,19 +1,19 @@
-import time
 import copy
-import torch
+import time
 from pathlib import Path
-import numpy as np
-from ultralytics.models.yolo.detect import DetectionTrainer
-from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
-from ultralytics.utils import LOGGER, TQDM, RANK, yaml_load, IterableSimpleNamespace
-from torch import distributed as dist
 
-from dyplom_mag.mean_teacher_3.detect import SFDetectionModel, DetectionModel
+import numpy as np
+import torch
+from torch import distributed as dist
+from ultralytics.models import yolo
+from ultralytics.models.yolo.detect import DetectionTrainer
 from ultralytics.nn.tasks import attempt_load_one_weight
+from ultralytics.utils import LOGGER, RANK, TQDM, IterableSimpleNamespace, yaml_load
+from ultralytics.utils.ops import non_max_suppression, xyxy2xywhn
+
+from dyplom_mag.mean_teacher_training.detect import DetectionModel, SFDetectionModel
 from dyplom_mag.target_augment.enhance_style import get_style_images
 from dyplom_mag.target_augment.enhance_vgg16 import enhance_vgg16
-from ultralytics.models import yolo
-
 
 ROOT = Path(__file__).parent
 DEFAULT_CFG_PATH = ROOT / "default.yaml"
@@ -378,11 +378,11 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         compute_loss = self.model.init_criterion()
         loss, loss_items = compute_loss(student_output, pseudo_labels)
         # After computing loss
-        print(f"\n=== Loss Debug ===")
+        print("\n=== Loss Debug ===")
         print(f"Epoch: {self.epoch}, N/A")
         print(f"Loss value: {loss.sum().item()}")
         print(f"Loss items: {loss_items.detach().cpu().numpy()}")
-        print(f"Grad norms:")
+        print("Grad norms:")
         total_norm = 0
         for p in self.model.parameters():
             if p.grad is not None:
@@ -390,7 +390,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 total_norm += param_norm.item() ** 2
         total_norm = total_norm**0.5
         print(f"  Total grad norm: {total_norm}")
-        print(f"=================\n")
+        print("=================\n")
 
         # self.inspect_tensor(loss, "Loss value")
 
@@ -417,7 +417,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             print(f"  Param {key}: diff={diff}")
             print(f"    Teacher: {t_data}")
             print(f"    Student: {s_data}")
-        print(f"=========================\n")
+        print("=========================\n")
 
     def _do_train_epoch(self, pbar, ni, epoch):
         """
@@ -511,11 +511,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self._setup_train(world_size)
 
         nb = len(self.train_loader)  # number of batches
-        nw = (
-            max(round(self.args.warmup_epochs * nb), 100)
-            if self.args.warmup_epochs > 0
-            else -1
-        )  # warmup iterations
         self.last_opt_step = -1
         self.epoch_time = None
         self.epoch_time_start = time.time()
@@ -742,11 +737,12 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             max_images (int): Maximum number of images to plot
             save_dir (str): Directory to save images, if None will use self.save_dir
         """
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as patches
-        from matplotlib.colors import to_rgba
-        import numpy as np
         import os
+
+        import matplotlib.patches as patches
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from matplotlib.colors import to_rgba
 
         # Create directory if needed
         if save_dir is None:
@@ -800,8 +796,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 # Convert normalized xywh to pixel xyxy
                 x1 = (x - w / 2) * width
                 y1 = (y - h / 2) * height
-                x2 = (x + w / 2) * width
-                y2 = (y + h / 2) * height
 
                 # Get color for this class
                 color = to_rgba(colors[cls % len(colors)])

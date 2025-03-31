@@ -1,41 +1,50 @@
-# coding=utf-8
-from PIL import Image
-import numpy as np
-# from model.utils.config import cfg
-import cv2
-import torch
-import matplotlib.pyplot as plt
-import matplotlib
 import os
 import random
+
+import cv2
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from PIL import Image
 from torchvision import transforms as transforms
+
 
 class enhance_base:
     def add_style(self, content, flag, save_images=False):
         if flag == 0:
             self.step += 1
-        assert (len(content.size()) == 4)
+        assert len(content.size()) == 4
         if self.args.random_style:
-            style = self.load_style_img(self.args, content, wh=(content.size(3),content.size(2)))
+            style = self.load_style_img(
+                self.args, content, wh=(content.size(3), content.size(2))
+            )
         else:
             if self.style_feats[flag][0].size() == content[0].size():
                 # style = self.coral(self.style_feats[flag][0], content[0])
-                style=self.style_feats[flag][0]
+                style = self.style_feats[flag][0]
             else:
-                style = self.load_style_img(self.args, content, wh=(content.size(3),content.size(2)))
+                style = self.load_style_img(
+                    self.args, content, wh=(content.size(3), content.size(2))
+                )
         with torch.no_grad():
             output = self.style_transfer(content[0], style, flag, self.alpha)
         for i in range(1, content.size(0)):
             # style = self.coral(self.style_feats[flag][0], content[i])
             with torch.no_grad():
-                output = torch.cat((output, self.style_transfer(
-                    content[i], style, flag, self.alpha)), 0)
-        if flag==0:
+                output = torch.cat(
+                    (output, self.style_transfer(content[i], style, flag, self.alpha)),
+                    0,
+                )
+        if flag == 0:
             # clip 0-255
-            output=(output.permute(0,2,3,1)+torch.from_numpy(self.pixel_means).float().cuda()).clamp(0,255)
-            output=output.permute(0,3,1,2).contiguous()
-            if self.step%30==1 and save_images:
-                self.show(content,content=True)
+            output = (
+                output.permute(0, 2, 3, 1)
+                + torch.from_numpy(self.pixel_means).float().cuda()
+            ).clamp(0, 255)
+            output = output.permute(0, 3, 1, 2).contiguous()
+            if self.step % 30 == 1 and save_images:
+                self.show(content, content=True)
                 self.show(output)
         return output.detach()
 
@@ -69,18 +78,19 @@ class enhance_base:
             self.style_image = self.load_and_process_style_img(args.style_path)
             self.style_feats = [self.style_image.unsqueeze(0)]
 
-        path = os.path.join(os.path.dirname(__file__), '..',self.args.log_dir,'noise')
+        path = os.path.join(os.path.dirname(__file__), "..", self.args.log_dir, "noise")
         if os.path.exists(path):
             import shutil
+
             shutil.rmtree(path)
         self.step = 0
 
-        path = os.path.join(os.path.dirname(__file__), '..',self.args.log_dir,'noise')
+        path = os.path.join(os.path.dirname(__file__), "..", self.args.log_dir, "noise")
         if os.path.exists(path):
             import shutil
+
             shutil.rmtree(path)
         self.step = 0
-
 
     def get_style_feats(self, args):
         if self.style_image is None:
@@ -88,10 +98,9 @@ class enhance_base:
         feats = [self.style_image.unsqueeze(0)]
         return feats
 
-    
     def load_and_process_style_img(self, path):
         im = Image.open(path)
-        im = im.convert('RGB')
+        im = im.convert("RGB")
         im = np.array(im)
         im = im[:, :, ::-1]
         im = im.astype(np.float32, copy=False)
@@ -99,33 +108,45 @@ class enhance_base:
         im_shape = im.shape
         im_size_min = np.min(im_shape[0:2])
         im_scale = float(self.target_size) / float(im_size_min)
-        im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale,
-                        interpolation=cv2.INTER_LINEAR)
+        im = cv2.resize(
+            im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR
+        )
         im = torch.from_numpy(im).permute(2, 0, 1).contiguous()
         if self.args.cuda:
             im = im.cuda()
         return im
-    
+
     def style_transfer(self, content, style, flag, alpha=1.0):
-        assert (0.0 <= alpha <= 1.0)
-        assert (len(content.size()) == 3)
+        assert 0.0 <= alpha <= 1.0
+        assert len(content.size()) == 3
         content = content.unsqueeze(0)
         style = style.unsqueeze(0)
-        size=content.size()
+        size = content.size()
         with torch.no_grad():
             for i in range(flag, self.num):
                 content = self.encoders[i](content).float()
                 style = self.encoders[i](style).float()
-            feat = self.adaptive_instance_normalization(content, style, self.fc1, self.fc2)
+            feat = self.adaptive_instance_normalization(
+                content, style, self.fc1, self.fc2
+            )
             feat = feat * alpha + content * (1 - alpha)
-            for i in range(self.num-flag):
+            for i in range(self.num - flag):
                 feat = self.decoders[i](feat)
 
-        if feat.size()!=size:
-            feat = torch.from_numpy(cv2.resize(feat[0].transpose(0, 1).transpose(1, 2).cpu().numpy(),(size[3],size[2]))).cuda().unsqueeze(0)
-            feat = feat.permute(0,3,1,2)
+        if feat.size() != size:
+            feat = (
+                torch.from_numpy(
+                    cv2.resize(
+                        feat[0].transpose(0, 1).transpose(1, 2).cpu().numpy(),
+                        (size[3], size[2]),
+                    )
+                )
+                .cuda()
+                .unsqueeze(0)
+            )
+            feat = feat.permute(0, 3, 1, 2)
         return feat
-            
+
     def load_style_img(self, args, content=None, wh=None):
         if args.random_style and content is not None and len(content.size()) == 4:
             # Use random style image from current batch for faster training
@@ -138,7 +159,7 @@ class enhance_base:
                 i = random.randint(0, len(args.imgs_paths) - 1)
                 path = args.imgs_paths[i]
                 im = Image.open(path)
-                im = im.convert('RGB')
+                im = im.convert("RGB")
                 im = np.array(im)
                 im = im[:, :, ::-1]
                 im = im.astype(np.float32, copy=False)
@@ -149,8 +170,14 @@ class enhance_base:
                     im = cv2.resize(im, wh, interpolation=cv2.INTER_LINEAR)
                 else:
                     im_scale = float(self.target_size) / float(im_size_min)
-                    im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale,
-                                    interpolation=cv2.INTER_LINEAR)
+                    im = cv2.resize(
+                        im,
+                        None,
+                        None,
+                        fx=im_scale,
+                        fy=im_scale,
+                        interpolation=cv2.INTER_LINEAR,
+                    )
                 im = torch.from_numpy(im).permute(2, 0, 1).contiguous()
             else:
                 im = self.style_image
@@ -158,39 +185,38 @@ class enhance_base:
             im = im.cuda()
         return im
 
-
-
     def coral(self, source, target):
         # assume both source and target are 3D array (C, H, W)
         # Note: flatten -> f
 
         # source style
         # target content
-        source_f, source_f_mean, source_f_std = self._calc_feat_flatten_mean_std(
-            source)
-        source_f_norm = (source_f - source_f_mean.expand_as(
-            source_f)) / source_f_std.expand_as(source_f)
-        source_f_cov_eye = \
-            torch.mm(source_f_norm, source_f_norm.t()) + \
-            torch.eye(source.size(0)).cuda()
+        source_f, source_f_mean, source_f_std = self._calc_feat_flatten_mean_std(source)
+        source_f_norm = (
+            source_f - source_f_mean.expand_as(source_f)
+        ) / source_f_std.expand_as(source_f)
+        source_f_cov_eye = (
+            torch.mm(source_f_norm, source_f_norm.t())
+            + torch.eye(source.size(0)).cuda()
+        )
 
-        target_f, target_f_mean, target_f_std = self._calc_feat_flatten_mean_std(
-            target)
-        target_f_norm = (target_f - target_f_mean.expand_as(
-            target_f)) / target_f_std.expand_as(target_f)
-        target_f_cov_eye = \
-            torch.mm(target_f_norm, target_f_norm.t()) + \
-            torch.eye(source.size(0)).cuda()
+        target_f, target_f_mean, target_f_std = self._calc_feat_flatten_mean_std(target)
+        target_f_norm = (
+            target_f - target_f_mean.expand_as(target_f)
+        ) / target_f_std.expand_as(target_f)
+        target_f_cov_eye = (
+            torch.mm(target_f_norm, target_f_norm.t())
+            + torch.eye(source.size(0)).cuda()
+        )
 
         source_f_norm_transfer = torch.mm(
             self._mat_sqrt(target_f_cov_eye),
-            torch.mm(torch.inverse(self._mat_sqrt(source_f_cov_eye)),
-                     source_f_norm)
+            torch.mm(torch.inverse(self._mat_sqrt(source_f_cov_eye)), source_f_norm),
         )
 
-        source_f_transfer = source_f_norm_transfer * \
-            target_f_std.expand_as(source_f_norm) + \
-            target_f_mean.expand_as(source_f_norm)
+        source_f_transfer = source_f_norm_transfer * target_f_std.expand_as(
+            source_f_norm
+        ) + target_f_mean.expand_as(source_f_norm)
 
         return source_f_transfer.view(source.size())
 
@@ -207,48 +233,60 @@ class enhance_base:
         return feat_flatten, mean, std
 
     def adaptive_instance_normalization(self, content_feat, style_feat, fc1, fc2):
-        assert (content_feat.size()[:2] == style_feat.size()[:2])
+        assert content_feat.size()[:2] == style_feat.size()[:2]
         size = content_feat.size()
         style_mean, style_std = self.calc_mean_std(style_feat)
         content_mean, content_std = self.calc_mean_std(content_feat)
 
-        normalized_feat = (content_feat - content_mean.expand(
-            size)) / content_std.expand(size)
-        
-        mixed_style_mean = torch.cat((style_mean,content_mean),1).squeeze(2).squeeze(2)
-        mixed_style_std = torch.cat((style_std,content_std),1).squeeze(2).squeeze(2)
+        normalized_feat = (
+            content_feat - content_mean.expand(size)
+        ) / content_std.expand(size)
+
+        mixed_style_mean = (
+            torch.cat((style_mean, content_mean), 1).squeeze(2).squeeze(2)
+        )
+        mixed_style_std = torch.cat((style_std, content_std), 1).squeeze(2).squeeze(2)
 
         new_style_mean = (fc1(mixed_style_mean)).unsqueeze(2).unsqueeze(2)
         new_style_std = (fc2(mixed_style_std)).unsqueeze(2).unsqueeze(2)
-        final = normalized_feat * new_style_std.expand(size) + new_style_mean.expand(size)
+        final = normalized_feat * new_style_std.expand(size) + new_style_mean.expand(
+            size
+        )
         return final
 
     def calc_mean_std(self, feat, eps=1e-5):
         # eps is a small value added to the variance to avoid divide-by-zero.
         size = feat.size()
-        assert (len(size) == 4)
+        assert len(size) == 4
         N, C = size[:2]
         feat_var = feat.view(N, C, -1).var(dim=2) + eps
         feat_std = feat_var.sqrt().view(N, C, 1, 1)
         feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
         return feat_mean, feat_std
 
-    def show(self, feat, content=False,save=True):
+    def show(self, feat, content=False, save=True):
         feat = torch.nan_to_num(feat)
         for i in range(feat.size(0)):
-            s = feat[i].transpose(
-                0, 1).transpose(1, 2).cpu().numpy()
+            s = feat[i].transpose(0, 1).transpose(1, 2).cpu().numpy()
             s = np.clip(s, 0, 255).astype(np.uint8)
-            # s = s[:, :, ::-1].astype(np.uint8)
-            # Image.fromarray(s.astype(np.uint8)).show()
             if save:
                 path = self.args.log_dir
                 if not os.path.exists(path):
                     os.makedirs(path)
                 if content:
-                    matplotlib.image.imsave(os.path.join(path, 'step'+str(self.step)+'_real'+str(i)+'.jpg'), s)
+                    matplotlib.image.imsave(
+                        os.path.join(
+                            path, "step" + str(self.step) + "_real" + str(i) + ".jpg"
+                        ),
+                        s,
+                    )
                 else:
-                    matplotlib.image.imsave(os.path.join(path, 'step'+str(self.step)+'_'+str(i)+'.jpg'), s)
+                    matplotlib.image.imsave(
+                        os.path.join(
+                            path, "step" + str(self.step) + "_" + str(i) + ".jpg"
+                        ),
+                        s,
+                    )
             else:
                 plt.imshow(s)
                 plt.show()

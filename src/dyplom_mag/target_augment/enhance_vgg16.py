@@ -1,8 +1,9 @@
-# coding=utf-8
-from torchvision import models
-import torch.nn as nn
 import torch
+import torch.nn as nn
+from torchvision import models
+
 from dyplom_mag.target_augment.enhance_base import enhance_base
+
 
 class enhance_vgg16(enhance_base):
     def __init__(self, args):
@@ -11,12 +12,12 @@ class enhance_vgg16(enhance_base):
         fcs = self.get_fcs()
         # print("using fcs...")
         vgg, decoder, fcs = self.load_param(args, vgg, decoder, fcs)
-        self.encoders, self.decoders = self.splits(vgg,decoder)
+        self.encoders, self.decoders = self.splits(vgg, decoder)
         enhance_base.__init__(self, args, self.encoders, self.decoders, fcs)
 
-    def splits(self,vgg,decoder):
-        encoders=[]
-        decoders=[]
+    def splits(self, vgg, decoder):
+        encoders = []
+        decoders = []
         encoders.append(nn.Sequential(*list(vgg._modules.values())[:2]))
         encoders.append(nn.Sequential(*list(vgg._modules.values())[2:7]))
         encoders.append(nn.Sequential(*list(vgg._modules.values())[7:12]))
@@ -25,12 +26,16 @@ class enhance_vgg16(enhance_base):
         decoders.append(nn.Sequential(*list(decoder._modules.values())[7:12]))
         decoders.append(nn.Sequential(*list(decoder._modules.values())[12:17]))
         decoders.append(nn.Sequential(*list(decoder._modules.values())[17:]))
-        return encoders,decoders
-    
+        return encoders, decoders
+
     def get_fcs(self):
-        fc1 = nn.Sequential(nn.Linear(1024,512),nn.ReLU(inplace=True),nn.Linear(512,512))
-        fc2 = nn.Sequential(nn.Linear(1024,512),nn.ReLU(inplace=True),nn.Linear(512,512))
-        return [fc1,fc2]
+        fc1 = nn.Sequential(
+            nn.Linear(1024, 512), nn.ReLU(inplace=True), nn.Linear(512, 512)
+        )
+        fc2 = nn.Sequential(
+            nn.Linear(1024, 512), nn.ReLU(inplace=True), nn.Linear(512, 512)
+        )
+        return [fc1, fc2]
 
     def get_vgg(self):
         vgg = models.vgg16()
@@ -42,32 +47,24 @@ class enhance_vgg16(enhance_base):
 
     def get_decoder(self):
         decoder = nn.Sequential(
-            nn.Conv2d(512, 256, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Conv2d(512, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv2d(256, 256, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Upsample(scale_factor=2, mode="nearest"),
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 128, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Conv2d(256, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv2d(128, 128, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Upsample(scale_factor=2, mode="nearest"),
+            nn.Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 64, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Conv2d(128, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv2d(64, 64, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Upsample(scale_factor=2, mode="nearest"),
+            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 3, kernel_size=(3, 3),
-                      stride=(1, 1), padding=(1, 1)),
+            nn.Conv2d(64, 3, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
         )
         return decoder
 
@@ -80,7 +77,7 @@ class enhance_vgg16(enhance_base):
             for param in fcs[i].parameters():
                 param.requires_grad = False
         decoder.load_state_dict(torch.load(args.decoder_path))
-        vgg.load_state_dict(torch.load(args.encoder_path)['model'])
+        vgg.load_state_dict(torch.load(args.encoder_path)["model"])
         vgg = nn.Sequential(*list(vgg.children())[:19])
         fcs[0].load_state_dict(torch.load(args.fc1))
         fcs[1].load_state_dict(torch.load(args.fc2))

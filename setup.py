@@ -17,9 +17,8 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.6",
+    python_requires=">=3.11",
     install_requires=[
         "ultralytics"
-        # List your package dependencies here, e.g. "numpy", "requests"
     ],
 )

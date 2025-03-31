@@ -1,6 +1,7 @@
-import torch
 from ultralytics.nn.tasks import DetectionModel
-from dyplom_mag.mean_teacher_2.sf_yolo_loss import SFYOLOv8Loss
+
+from dyplom_mag.mean_teacher_training.sf_yolo_loss import SFYOLOv8Loss
+
 
 class SFDetectionModel(DetectionModel):
     """Custom YOLO model for Source-Free learning that works with pseudo-labels"""
@@ -15,7 +16,7 @@ class SFDetectionModel(DetectionModel):
             verbose: Whether to print model information
         """
         super().__init__(cfg, ch, nc, verbose)
-        
+
     def init_criterion(self):
         """Initialize the custom SF-YOLO loss criterion"""
         return SFYOLOv8Loss(self)
