@@ -1,7 +1,8 @@
 """
 Sequential Training Module
 
-This module provides functionality to train a model on multiple mini-datasets sequentially.
+This module provides functionality to train multiple models on different mini-datasets.
+Each dataset uses the same starting model and has its own custom YAML configuration.
 """
 
 from __future__ import annotations
@@ -10,8 +11,9 @@ import os
 import subprocess
 import sys
 import yaml
+import copy
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 BASE_DIR = os.path.dirname(__file__)
 
@@ -40,8 +42,8 @@ class TrainingConfig:
 
 def train_sequential(config: TrainingConfig):
     """
-    Train a model on multiple mini-datasets, with configurable parallelism.
-    Setting parallel=1 gives purely sequential training.
+    Train multiple models on different mini-datasets, with optional parallel processing.
+    Each model starts from the same initial model and uses a custom YAML config.
 
     Args:
         config: TrainingConfig object containing configuration parameters
@@ -61,33 +63,26 @@ def train_sequential(config: TrainingConfig):
     if config.num_datasets is not None:
         mini_datasets = mini_datasets[: config.num_datasets]
 
-    # Initialize with the starting model
-    current_model_path = config.starting_model_path
     saved_models = []
     parallel = max(1, config.parallel)  # Ensure at least 1
 
-    # Create a temporary YAML file for the training kwargs
-    training_kwargs_yaml = os.path.join(BASE_DIR, "temp_training_kwargs.yaml")
-    with open(training_kwargs_yaml, 'w') as f:
-        yaml.dump(config.training_kwargs, f)
-
-    # Process mini-datasets in groups of size 'parallel'
+    # Process datasets in groups based on parallel count
     for start_idx in range(0, len(mini_datasets), parallel):
         end_idx = min(start_idx + parallel, len(mini_datasets))
-        current_batch = mini_datasets[start_idx:end_idx]
+        current_parallel_datasets = mini_datasets[start_idx:end_idx]
 
         if parallel > 1:
             print(
-                f"Starting training for datasets {start_idx} to {end_idx - 1} ({parallel} parallel processes)"
+                f"Starting parallel training for datasets {start_idx} to {end_idx - 1} ({len(current_parallel_datasets)} concurrent processes)"
             )
 
-        # Keep track of processes and their corresponding dataset indices
+        # Track processes for parallel execution
         processes = []
-        temp_output_paths = []
+        temp_config_files = []
 
-        # Start multiple training processes
-        for batch_idx, dataset_path in enumerate(current_batch):
-            dataset_idx = start_idx + batch_idx
+        # Start training processes for each dataset in the current parallel group
+        for idx_in_group, dataset_path in enumerate(current_parallel_datasets):
+            dataset_idx = start_idx + idx_in_group
             dataset_name = os.path.basename(dataset_path)
             data_yaml_path = os.path.join(dataset_path, "data.yaml")
 
@@ -95,20 +90,32 @@ def train_sequential(config: TrainingConfig):
                 print(f"Skipping {dataset_path} because no data.yaml was found.")
                 continue
 
-            # Prepare output model path for this dataset
-            output_model_path = config.final_model_template.format(dataset_idx)
-            temp_output_paths.append(output_model_path)
+            # Create a custom YAML config for this dataset
+            dataset_config = copy.deepcopy(config.training_kwargs)
+            # Update the data path to point to this dataset's YAML
+            dataset_config["data"] = data_yaml_path
+            # Add dataset name to the configuration
+            dataset_config["name"] = dataset_name
 
-            # Build training command
+            # Create a temporary YAML file for this dataset's config
+            temp_config_path = os.path.join(BASE_DIR, f"temp_config_{dataset_idx}.yaml")
+            with open(temp_config_path, 'w') as f:
+                yaml.dump(dataset_config, f)
+            temp_config_files.append(temp_config_path)
+
+            # Prepare output model path for this specific dataset
+            output_model_path = config.final_model_template.format(dataset_idx)
+
+            # Build training command - always use the starting model
             cmd = [
                 sys.executable,
                 os.path.join(BASE_DIR, "training_script.py"),
                 "--input_model_path",
-                current_model_path,
+                config.starting_model_path,
                 "--output_model_path",
                 output_model_path,
                 "--training_kwargs_yaml",
-                training_kwargs_yaml,
+                temp_config_path,
             ]
 
             # Add SF YOLO flag if needed
@@ -136,9 +143,6 @@ def train_sequential(config: TrainingConfig):
                         f"Successfully trained on {dataset_name}, model saved to {output_model_path}"
                     )
                     saved_models.append(output_model_path)
-
-                # Update current model path for next iteration in sequential mode
-                current_model_path = output_model_path
             else:
                 # Parallel mode - use subprocess.Popen
                 process = subprocess.Popen(
@@ -170,19 +174,16 @@ def train_sequential(config: TrainingConfig):
                     )
                     saved_models.append(output_model_path)
 
-            # Use the last successfully trained model as input for the next batch
-            if temp_output_paths:
-                current_model_path = temp_output_paths[-1]
-
-    # Clean up the temporary YAML file
-    if os.path.exists(training_kwargs_yaml):
-        os.remove(training_kwargs_yaml)
+        # Clean up temporary config files
+        for temp_file in temp_config_files:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
     if parallel > 1:
         print(
-            f"Training complete. Trained on {len(saved_models)} datasets using {parallel} parallel processes."
+            f"Training complete. Trained {len(saved_models)} models on {len(saved_models)} datasets using up to {parallel} parallel processes."
         )
     else:
-        print(f"Sequential training complete. Trained on {len(saved_models)} datasets.")
+        print(f"Sequential training complete. Trained {len(saved_models)} models on {len(saved_models)} datasets.")
 
     return saved_models
