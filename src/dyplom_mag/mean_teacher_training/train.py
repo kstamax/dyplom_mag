@@ -50,11 +50,6 @@ class WeightEMA(torch.optim.Optimizer):
             teacher_param.data.mul_(self.alpha).add_(
                 student_param.data, alpha=1 - self.alpha
             )
-            # # Add some debug output to verify EMA update
-            # if random.random() < 0.1:  # Print debug info with 1% probability to avoid spam
-            #     teacher_norm = sum(p.norm().item() for p in self.teacher_params)
-            #     student_norm = sum(p.norm().item() for p in self.student_params)
-            #     print(f"EMA Update - Teacher norm: {teacher_norm:.4f}, Student norm: {student_norm:.4f}")
 
 
 class SFMeanTeacherTrainer(DetectionTrainer):
@@ -108,7 +103,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.teacher_ema = None
         # Call parent initializer
         super().__init__(cfg, overrides, _callbacks)
-        print("=======================", type(self.model), "=======================")
         self.setup_teacher_model()
 
     def get_model(self, cfg=None, weights=None, verbose=True):
@@ -377,47 +371,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         # Compute loss using pseudo-labels
         compute_loss = self.model.init_criterion()
         loss, loss_items = compute_loss(student_output, pseudo_labels)
-        # After computing loss
-        print("\n=== Loss Debug ===")
-        print(f"Epoch: {self.epoch}, N/A")
-        print(f"Loss value: {loss.sum().item()}")
-        print(f"Loss items: {loss_items.detach().cpu().numpy()}")
-        print("Grad norms:")
-        total_norm = 0
-        for p in self.model.parameters():
-            if p.grad is not None:
-                param_norm = p.grad.data.norm(2)
-                total_norm += param_norm.item() ** 2
-        total_norm = total_norm**0.5
-        print(f"  Total grad norm: {total_norm}")
-        print("=================\n")
-
-        # self.inspect_tensor(loss, "Loss value")
-
         return loss, loss_items
-
-    @staticmethod
-    def compare_models(teacher, student, name=""):
-        print(f"\n=== Model Comparison {name} ===")
-        # Compare a few sample parameters
-        t_params = dict(teacher.named_parameters())
-        s_params = dict(student.named_parameters())
-
-        common_keys = list(set(t_params.keys()) & set(s_params.keys()))
-        if not common_keys:
-            print("No common parameter keys found!")
-            return
-
-        # Sample up to 3 parameters to check
-        sample_keys = common_keys[: min(3, len(common_keys))]
-        for key in sample_keys:
-            t_data = t_params[key].data.flatten()[:5].cpu().numpy()
-            s_data = s_params[key].data.flatten()[:5].cpu().numpy()
-            diff = np.abs(t_data - s_data).mean()
-            print(f"  Param {key}: diff={diff}")
-            print(f"    Teacher: {t_data}")
-            print(f"    Student: {s_data}")
-        print("=========================\n")
 
     def _do_train_epoch(self, pbar, ni, epoch):
         """
@@ -428,9 +382,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             ni: Number of iterations
             epoch: Current epoch
         """
-        self.compare_models(
-            self.teacher_model, self.model, f"Start of Epoch {self.epoch}"
-        )
         self.model.train()
         self.teacher_model.eval()  # Teacher is always in eval mode for inference
 
@@ -447,8 +398,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
             self.scaler.scale(loss.sum()).backward()
 
             # Optimize - Gradient accumulation
-            print(ni - self.last_opt_step >= self.accumulate, "*" * 100)
-            print(nb, ni, self.last_opt_step, self.accumulate, "*" * 100)
             if ni - self.last_opt_step >= self.accumulate:
                 self.optimizer_step()
                 self.last_opt_step = ni
@@ -459,12 +408,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.teacher_model.zero_grad()  # Clear any gradients
                 self.teacher_optimizer.step()  # Apply EMA update
                 self.teacher_model.eval()  # Set back to eval mode
-                if i % 2 == 0:  # Only print every 10 batches to avoid too much output
-                    self.compare_models(
-                        self.teacher_model,
-                        self.model,
-                        f"After Update Epoch {self.epoch} Batch {i}",
-                    )
 
             # Update metrics
             if RANK in {-1, 0}:

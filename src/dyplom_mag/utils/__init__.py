@@ -1,4 +1,4 @@
 from dyplom_mag.utils.create_smaller_datasets import create_multi_image_datasets
 from dyplom_mag.utils.plot_predictions import plot_predictions_and_ground_truth
 from dyplom_mag.utils.validate_model import validate_dataset, validate_all_datasets
-from dyplom_mag.utils.fedavg import fedavg_yolo_model
+from dyplom_mag.utils.federated_algorithms import fedavg_yolo_model

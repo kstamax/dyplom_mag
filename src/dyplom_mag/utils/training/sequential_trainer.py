@@ -13,7 +13,7 @@ import sys
 import yaml
 import copy
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 BASE_DIR = os.path.dirname(__file__)
 
