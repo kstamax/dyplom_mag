@@ -77,6 +77,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
         self.style_alpha = overrides.get("style_alpha", 0.2)
         self.max_gt_boxes = overrides.get("max_gt_boxes", 20)
         self.style_path = overrides.get("style_path", "")
+        self.max_wh = overrides.get("max_wh", 150)
 
         # Encoder and decoder paths for AdaIN style transfer
         base_dir = Path(__file__).parent.parent
@@ -355,6 +356,7 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 conf_thres=self.conf_thres,
                 iou_thres=self.iou_thres,
                 max_det=self.max_gt_boxes,
+                max_wh=self.max_wh,
             )
 
         # Calculate average confidence for each image and overall
