@@ -134,3 +134,4 @@ style_alpha: 0.2
 style_path: /content/style
 save_style_samples: /content/
 teacher_alpha: 0.999
+max_wh: 150
