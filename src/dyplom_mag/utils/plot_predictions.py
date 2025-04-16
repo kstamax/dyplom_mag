@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 
 def plot_predictions_and_ground_truth(model, image_path, label_path, device="cuda"):
-    class_names = ["автомобіль", "вантажівка"]
+    class_names = ["car", "truck"]
 
     original_image = cv2.imread(image_path)
     if original_image is None:
@@ -85,7 +85,7 @@ def plot_predictions_and_ground_truth(model, image_path, label_path, device="cud
 
 def compare_model_predictions(model1, model2, image_path, device="cuda", 
                              left_title="Model 1 Predictions", right_title="Model 2 Predictions", 
-                             main_title=None, class_names=["автомобіль", "вантажівка"]):
+                             main_title=None, class_names=["car", "truck"]):
     """
     Compare predictions from two models on the same image.
     
@@ -120,7 +120,7 @@ def compare_model_predictions(model1, model2, image_path, device="cuda",
             image1,
             text,
             (int(x1), int(y1) - 10),
-            cv2.FONT_HERSHEY_COMPLEX,
+            cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 0, 255),
             2,
@@ -140,7 +140,7 @@ def compare_model_predictions(model1, model2, image_path, device="cuda",
             image2,
             text,
             (int(x1), int(y1) - 10),
-            cv2.FONT_HERSHEY_COMPLEX,
+            cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 255, 0),
             2,
