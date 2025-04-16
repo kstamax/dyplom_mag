@@ -75,7 +75,6 @@ class SFYOLO(YOLO):
             "conf_thres": conf_thres,
             "iou_thres": iou_thres,
             "max_gt_boxes": max_gt_boxes,
-            "max_wh": max_wh,
             "save_style_samples": save_style_samples,
             **kwargs,
         }
