@@ -40,7 +40,7 @@ class enhance_base:
             # clip 0-255
             output = (
                 output.permute(0, 2, 3, 1)
-                + torch.from_numpy(self.pixel_means).float().cuda()
+                + torch.from_numpy(self.pixel_means).float()
             ).clamp(0, 255)
             output = output.permute(0, 3, 1, 2).contiguous()
             if self.step % 30 == 1 and save_images:
@@ -141,7 +141,7 @@ class enhance_base:
                         (size[3], size[2]),
                     )
                 )
-                .cuda()
+                # .cuda()
                 .unsqueeze(0)
             )
             feat = feat.permute(0, 3, 1, 2)
@@ -197,7 +197,7 @@ class enhance_base:
         ) / source_f_std.expand_as(source_f)
         source_f_cov_eye = (
             torch.mm(source_f_norm, source_f_norm.t())
-            + torch.eye(source.size(0)).cuda()
+            + torch.eye(source.size(0))
         )
 
         target_f, target_f_mean, target_f_std = self._calc_feat_flatten_mean_std(target)
@@ -206,7 +206,7 @@ class enhance_base:
         ) / target_f_std.expand_as(target_f)
         target_f_cov_eye = (
             torch.mm(target_f_norm, target_f_norm.t())
-            + torch.eye(source.size(0)).cuda()
+            + torch.eye(source.size(0))
         )
 
         source_f_norm_transfer = torch.mm(

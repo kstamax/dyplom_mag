@@ -51,7 +51,7 @@ class TrainingConfig:
     before_fcs_steps: int = 0
 
     # Device configuration
-    device: str = "cuda"
+    device: str = "cpu"
 
 
 def train_transform():

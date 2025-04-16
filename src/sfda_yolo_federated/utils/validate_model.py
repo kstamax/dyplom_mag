@@ -12,6 +12,7 @@ def validate_all_datasets(
     base_path="/content",
     datasets=["adit", "malam", "morning", "night", "noon", "pagi", "rain"],
     device="cuda",
+    split="test"
 ):
     # Define dataset names and construct corresponding data.yaml paths.
 
@@ -21,7 +22,7 @@ def validate_all_datasets(
         data_yaml = os.path.join(base_path, ds, "data.yaml")
         print(f"Validating dataset: {ds} from {data_yaml}")
         try:
-            results = model.val(data=data_yaml, split="test", device=device)
+            results = model.val(data=data_yaml, split=split, device=device)
             metrics = results.results_dict
             results_list.append(
                 {
