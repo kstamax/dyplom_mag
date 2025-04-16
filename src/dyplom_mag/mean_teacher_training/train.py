@@ -403,11 +403,6 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 self.last_opt_step = ni
                 if self.ema:
                     self.ema.update(self.model)
-                # Update teacher with EMA of student
-                self.teacher_model.train()  # Temporarily set to train mode
-                self.teacher_model.zero_grad()  # Clear any gradients
-                self.teacher_optimizer.step()  # Apply EMA update
-                self.teacher_model.eval()  # Set back to eval mode
 
             # Update metrics
             if RANK in {-1, 0}:
@@ -419,6 +414,12 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 # Update progress bar description
                 self.update_pbar_description(pbar, batch, epoch, ni)
                 self.run_callbacks("on_batch_end")
+            
+            # Update teacher with EMA of student
+            self.teacher_model.train()  # Temporarily set to train mode
+            self.teacher_model.zero_grad()  # Clear any gradients
+            self.teacher_optimizer.step()  # Apply EMA update
+            self.teacher_model.eval()  # Set back to eval mode
 
             self.run_callbacks("on_train_batch_end")
 
