@@ -357,6 +357,32 @@ class SFMeanTeacherTrainer(DetectionTrainer):
                 max_det=self.max_gt_boxes,
             )
 
+        # Calculate average confidence for each image and overall
+        total_pred_count = 0
+        total_conf_sum = 0
+        
+        for img_idx, pred in enumerate(teacher_predictions):
+            if len(pred) > 0:
+                # Get confidence scores (5th column in the predictions)
+                conf_scores = pred[:, 4]
+                img_avg_conf = conf_scores.mean().item()
+                img_pred_count = len(pred)
+                
+                # Add to totals
+                total_pred_count += img_pred_count
+                total_conf_sum += conf_scores.sum().item()
+                
+                # Log per-image stats
+                LOGGER.info(f"Batch image {img_idx}: {img_pred_count} predictions, avg conf: {img_avg_conf:.4f}")
+        
+        # Calculate and log overall average
+        if total_pred_count > 0:
+            batch_avg_conf = total_conf_sum / total_pred_count
+            LOGGER.info(f"Batch avg confidence: {batch_avg_conf:.4f} from {total_pred_count} predictions")
+        else:
+            LOGGER.info("No predictions in this batch")
+
+
         # Get pseudo-labels from teacher predictions
         pseudo_labels = self.get_pseudo_labels(batch["orig_img"], teacher_predictions)
 
